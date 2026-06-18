@@ -132,7 +132,6 @@ const icons = {
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   settings: "M12 2c-5.33 4.55-8 8.48-8 14.8 0 5.64 2.05 7.2 8 7.2s8-1.56 8-7.2c0-6.32-2.67-10.25-8-14.8z",
 };
-
 // ─── Main App ──────────────────────────────────────────────────────────────
 export default function SmartNotesApp() {
   const [data, setData] = useState(loadData);
@@ -180,7 +179,12 @@ export default function SmartNotesApp() {
     setNewCategoryColor("#6366F1");
     setShowCategoryModal(false);
   };
-  
+
+  const deleteCategory = (id) => {
+    const notes = data.notes.map((n) => (n.categoryId === id ? { ...n, categoryId: null } : n));
+    persist({ ...data, categories: data.categories.filter((c) => c.id !== id), notes });
+  };
+
   // ── Notes helpers ──────────────────────────────────────────────────────────
   const newNote = () => {
     setActiveNote({
@@ -301,581 +305,574 @@ ${notesContext || "Заметок пока нет."}`;
     setAiLoading(false);
   };
 
-  // ── Styles ────────────────────────────────────────────────────────────────
-  const s = {
-    app: {
-      minHeight: "100vh",
-      background: t.bg,
-      color: t.text,
-      fontFamily:
-        '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
-      display: "flex",
-      flexDirection: "column",
-      maxWidth: 480,
-      margin: "0 auto",
-      position: "relative",
-      transition: "background 0.3s, color 0.3s",
-    },
-    header: {
-      padding: "20px 16px 12px",
-      borderBottom: `1px solid ${t.border}`,
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      background: t.surface,
-      position: "sticky",
-      top: 0,
-      zIndex: 10,
-      transition: "background 0.3s, border-color 0.3s",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: 700,
-      letterSpacing: "-0.3px",
-      flex: 1,
-      background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})`,
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-    },
-    nav: {
-      display: "flex",
-      background: t.surface,
-      borderTop: `1px solid ${t.border}`,
-      position: "sticky",
-      bottom: 0,
-      zIndex: 10,
-      transition: "background 0.3s, border-color 0.3s",
-    },
-    navBtn: (active) => ({
-      flex: 1,
-      padding: "12px 0",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 4,
-      background: "none",
-      border: "none",
-      color: active ? t.accent : t.textMuted,
-      fontSize: 10,
-      fontWeight: active ? 600 : 400,
-      cursor: "pointer",
-      transition: "all 0.2s",
-    }),
-    content: {
-      flex: 1,
-      padding: "16px 16px 0",
-      overflowY: "auto",
-    },
-    card: {
-      background: t.card,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      border: `1px solid ${t.border}`,
-      cursor: "pointer",
-      transition: "all 0.2s",
-    },
-    cardTitle: {
-      fontSize: 15,
-      fontWeight: 600,
-      marginBottom: 6,
-      color: t.text,
-    },
-    cardText: {
-      fontSize: 13,
-      color: t.textMuted,
-      lineHeight: 1.5,
-      display: "-webkit-box",
-      WebkitLineClamp: 2,
-      WebkitBoxOrient: "vertical",
-      overflow: "hidden",
-    },
-    btn: (variant = "primary") => ({
-      padding: variant === "icon" ? "8px" : "10px 16px",
-      borderRadius: 8,
-      border: "none",
-      cursor: "pointer",
-      fontWeight: 600,
-      fontSize: 14,
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      transition: "all 0.2s",
-      fontFamily: "inherit",
-      ...(variant === "primary"
-        ? { background: t.accent, color: "#fff" }
-        : variant === "danger"
-        ? { background: `${t.danger}22`, color: t.danger }
-        : variant === "ghost"
-        ? { background: "transparent", color: t.textMuted }
-        : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
-    }),
-    input: {
-      width: "100%",
-      background: t.card,
-      border: `1px solid ${t.border}`,
-      borderRadius: 8,
-      padding: "10px 12px",
-      color: t.text,
-      fontSize: 14,
-      outline: "none",
-      boxSizing: "border-box",
-      fontFamily: "inherit",
-      transition: "border-color 0.2s",
-    },
-    textarea: {
-      width: "100%",
-      background: t.card,
-      border: `1px solid ${t.border}`,
-      borderRadius: 8,
-      padding: "10px 12px",
-      color: t.text,
-      fontSize: 14,
-      outline: "none",
-      resize: "vertical",
-      minHeight: 120,
-      lineHeight: 1.6,
-      boxSizing: "border-box",
-      fontFamily: "inherit",
-      transition: "border-color 0.2s",
-    },
-    label: {
-      fontSize: 12,
-      color: t.textMuted,
-      marginBottom: 6,
-      display: "block",
-      fontWeight: 500,
-    },
-    row: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-    },
-    section: {
-      marginBottom: 20,
-    },
-    bubble: (isUser) => ({
-      maxWidth: "82%",
-      padding: "10px 14px",
-      borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-      background: isUser ? t.accent : t.card,
-      color: isUser ? "#fff" : t.text,
-      fontSize: 14,
-      lineHeight: 1.5,
-      border: isUser ? "none" : `1px solid ${t.border}`,
-      alignSelf: isUser ? "flex-end" : "flex-start",
-      whiteSpace: "pre-wrap",
-    }),
-    empty: {
-      textAlign: "center",
-      padding: "60px 20px",
-      color: t.textMuted,
-    },
-    categoryBadge: (color) => ({
-      display: "inline-block",
-      background: `${color}33`,
-      color: color,
-      borderRadius: 6,
-      padding: "4px 10px",
-      fontSize: 11,
-      fontWeight: 500,
-      marginRight: 6,
-      marginBottom: 8,
-      cursor: "pointer",
-      border: `1px solid ${color}66`,
-    }),
-    modal: {
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "rgba(0,0,0,0.5)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 999,
-    },
-    modalContent: {
-      background: t.card,
-      borderRadius: 12,
-      padding: 20,
-      width: "90%",
-      maxWidth: 400,
-      border: `1px solid ${t.border}`,
-    },
-  };
-
-  // ── Render Notes ───────────────────────────────────────────────────────────
-  const renderNotes = () => {
-    if (view === "edit")
-      return (
-        <NoteEditor
-          note={activeNote}
-          categories={data.categories}
-          onSave={saveNote}
-          onCancel={() => setView("list")}
-          theme={t}
-          s={s}
-        />
-      );
-    if (view === "detail")
-      return (
-        <NoteDetail
-          note={activeNote}
-          categories={data.categories}
-          onEdit={() => setView("edit")}
-          onDelete={() => deleteNote(activeNote.id)}
-          onBack={() => setView("list")}
-          onSummarize={() => aiSummarize(activeNote)}
-          onGenerateQuiz={() => generateQuizFromNote(activeNote)}
-          aiLoading={aiLoading}
-          theme={t}
-          s={s}
-          icons={icons}
-          Icon={Icon}
-        />
-      );
-
+// ── Styles ────────────────────────────────────────────────────────────────
+const s = {
+  app: {
+    minHeight: "100vh",
+    background: t.bg,
+    color: t.text,
+    fontFamily:
+      '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
+    display: "flex",
+    flexDirection: "column",
+    maxWidth: 480,
+    margin: "0 auto",
+    position: "relative",
+    transition: "background 0.3s, color 0.3s",
+  },
+  header: {
+    padding: "20px 16px 12px",
+    borderBottom: `1px solid ${t.border}`,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    background: t.surface,
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    transition: "background 0.3s, border-color 0.3s",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    letterSpacing: "-0.3px",
+    flex: 1,
+    background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})`,
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+  },
+  nav: {
+    display: "flex",
+    background: t.surface,
+    borderTop: `1px solid ${t.border}`,
+    position: "sticky",
+    bottom: 0,
+    zIndex: 10,
+    transition: "background 0.3s, border-color 0.3s",
+  },
+  navBtn: (active) => ({
+    flex: 1,
+    padding: "12px 0",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    background: "none",
+    border: "none",
+    color: active ? t.accent : t.textMuted,
+    fontSize: 10,
+    fontWeight: active ? 600 : 400,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  }),
+  content: {
+    flex: 1,
+    padding: "16px 16px 0",
+    overflowY: "auto",
+  },
+  card: {
+    background: t.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    border: `1px solid ${t.border}`,
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    marginBottom: 6,
+    color: t.text,
+  },
+  cardText: {
+    fontSize: 13,
+    color: t.textMuted,
+    lineHeight: 1.5,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  btn: (variant = "primary") => ({
+    padding: variant === "icon" ? "8px" : "10px 16px",
+    borderRadius: 8,
+    border: "none",
+    cursor: "pointer",
+    fontWeight: 600,
+    fontSize: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "all 0.2s",
+    fontFamily: "inherit",
+    ...(variant === "primary"
+      ? { background: t.accent, color: "#fff" }
+      : variant === "danger"
+      ? { background: `${t.danger}22`, color: t.danger }
+      : variant === "ghost"
+      ? { background: "transparent", color: t.textMuted }
+      : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
+  }),
+  input: {
+    width: "100%",
+    background: t.card,
+    border: `1px solid ${t.border}`,
+    borderRadius: 8,
+    padding: "10px 12px",
+    color: t.text,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+    transition: "border-color 0.2s",
+  },
+  textarea: {
+    width: "100%",
+    background: t.card,
+    border: `1px solid ${t.border}`,
+    borderRadius: 8,
+    padding: "10px 12px",
+    color: t.text,
+    fontSize: 14,
+    outline: "none",
+    resize: "vertical",
+    minHeight: 120,
+    lineHeight: 1.6,
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+    transition: "border-color 0.2s",
+  },
+  label: {
+    fontSize: 12,
+    color: t.textMuted,
+    marginBottom: 6,
+    display: "block",
+    fontWeight: 500,
+  },
+  row: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+  },
+  section: {
+    marginBottom: 20,
+  },
+  bubble: (isUser) => ({
+    maxWidth: "82%",
+    padding: "10px 14px",
+    borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+    background: isUser ? t.accent : t.card,
+    color: isUser ? "#fff" : t.text,
+    fontSize: 14,
+    lineHeight: 1.5,
+    border: isUser ? "none" : `1px solid ${t.border}`,
+    alignSelf: isUser ? "flex-end" : "flex-start",
+    whiteSpace: "pre-wrap",
+  }),
+  empty: {
+    textAlign: "center",
+    padding: "60px 20px",
+    color: t.textMuted,
+  },
+  categoryBadge: (color) => ({
+    display: "inline-block",
+    background: `${color}33`,
+    color: color,
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 11,
+    fontWeight: 500,
+    marginRight: 6,
+    marginBottom: 8,
+    cursor: "pointer",
+    border: `1px solid ${color}66`,
+  }),
+  modal: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+  },
+  modalContent: {
+    background: t.card,
+    borderRadius: 12,
+    padding: 20,
+    width: "90%",
+    maxWidth: 400,
+    border: `1px solid ${t.border}`,
+  },
+} 
+// ── Render Notes ───────────────────────────────────────────────────────────
+const renderNotes = () => {
+  if (view === "edit")
     return (
-      <div>
-        {/* Categories */}
-        <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${t.border}` }}>
-          <div style={{ ...s.row, marginBottom: 12, justifyContent: "space-between" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: t.textMuted }}>КАТЕГОРИИ</div>
-            <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(true)}>
-              <Icon d={icons.plus} size={14} />
-            </button>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-  <button
-    style={{
-      ...s.categoryBadge(t.accent),
-      border: activeCategory === null ? `2px solid ${t.accent}` : `1px solid ${t.accent}66`,
-      background: activeCategory === null ? `${t.accent}44` : `${t.accent}22`,
-    }}
-    onClick={() => setActiveCategory(null)}
-  >
-    Все
-  </button>
-  {data.categories.map((cat) => (
-    <div 
-      key={cat.id} 
-      style={{ 
-        display: "inline-flex",
-        alignItems: "center", 
-        gap: 2,
-        marginBottom: 4
-      }}
-    >
-      <button
-        style={{
-          ...s.categoryBadge(cat.color),
-          border: activeCategory === cat.id ? `2px solid ${cat.color}` : `1px solid ${cat.color}66`,
-          background: activeCategory === cat.id ? `${cat.color}44` : `${cat.color}22`,
-          marginRight: 0,
-        }}
-        onClick={() => setActiveCategory(cat.id)}
-      >
-        {cat.name}
-      </button>
-      <button
-        style={{
-          background: `${t.danger}22`,
-          color: t.danger,
-          border: `1px solid ${t.danger}44`,
-          borderRadius: "50%",
-          width: 18,
-          height: 18,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          fontSize: 12,
-          fontWeight: 700,
-          padding: 0,
-          transition: "all 0.2s",
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (window.confirm(`Удалить категорию "${cat.name}"? Заметки станут "без категории"`)) {
-            deleteCategory(cat.id);
-          }
-        }}
-        title="Удалить категорию"
-      >
-        ×
-      </button>
-    </div>
-  ))}
-</div>
-
-        {/* Search */}
-        <div style={{ ...s.row, marginBottom: 12 }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <span
-              style={{
-                position: "absolute",
-                left: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: t.textMuted,
-              }}
-            >
-              <Icon d={icons.search} size={16} />
-            </span>
-            <input
-              style={{ ...s.input, paddingLeft: 34 }}
-              placeholder="Поиск по заметкам..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <button style={s.btn("primary")} onClick={newNote}>
-            <Icon d={icons.plus} size={16} /> Новая
-          </button>
-        </div>
-
-        {/* Notes List */}
-        {filtered.length === 0 ? (
-          <div style={s.empty}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Нет заметок</div>
-            <div style={{ fontSize: 13 }}>
-              {activeCategory !== null ? "Создайте заметку в этой категории" : "Создайте первую заметку"}
-            </div>
-          </div>
-        ) : (
-          filtered.map((note) => {
-            const cat = data.categories.find((c) => c.id === note.categoryId);
-            return (
-              <div
-                key={note.id}
-                style={s.card}
-                onClick={() => {
-                  setActiveNote(note);
-                  setView("detail");
-                }}
-              >
-                <div style={s.cardTitle}>{note.title || "Без названия"}</div>
-                <div style={s.cardText}>{note.body}</div>
-                <div style={{ marginTop: 8 }}>
-                  {cat && <span style={s.categoryBadge(cat.color)}>{cat.name}</span>}
-                  {note.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      style={{
-                        display: "inline-block",
-                        background: `${t.accent}22`,
-                        color: t.accent,
-                        borderRadius: 6,
-                        padding: "2px 8px",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        marginRight: 4,
-                        marginBottom: 4,
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  <span style={{ fontSize: 11, color: t.textMuted, float: "right", marginTop: 2 }}>
-                    {new Date(note.createdAt).toLocaleDateString("ru")}
-                  </span>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <NoteEditor
+        note={activeNote}
+        categories={data.categories}
+        onSave={saveNote}
+        onCancel={() => setView("list")}
+        theme={t}
+        s={s}
+      />
     );
-  };
-
-  // ── Render AI ──────────────────────────────────────────────────────────────
-  const renderAI = () => (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)" }}>
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          paddingBottom: 8,
-        }}
-        ref={chatRef}
-      >
-        {data.chatHistory.length === 0 && (
-          <div style={s.empty}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>ИИ-ассистент</div>
-            <div style={{ fontSize: 13 }}>
-              Я знаю ваши заметки и помогу найти информацию, составить план или ответить на вопросы
-            </div>
-          </div>
-        )}
-        {data.chatHistory.map((m, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-            <div style={s.bubble(m.role === "user")}>{m.content}</div>
-          </div>
-        ))}
-        {chatLoading && (
-          <div style={{ display: "flex" }}>
-            <div style={{ ...s.bubble(false), color: t.textMuted }}>Думаю...</div>
-          </div>
-        )}
-      </div>
-      <div
-        style={{
-          ...s.row,
-          paddingTop: 8,
-          borderTop: `1px solid ${t.border}`,
-          paddingBottom: 8,
-        }}
-      >
-        <input
-          style={{ ...s.input, flex: 1 }}
-          placeholder="Спросить ИИ..."
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendChat()}
-        />
-        <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
-          <Icon d={icons.send} size={16} />
-        </button>
-        {data.chatHistory.length > 0 && (
-          <button
-            style={s.btn("ghost")}
-            onClick={() => persist({ ...data, chatHistory: [] })}
-            title="Очистить"
-          >
-            <Icon d={icons.trash} size={16} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  // ── Main render ────────────────────────────────────────────────────────────
-  const headerTitle =
-    tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ-ассистент" : "📋 Тесты";
-
-  const tabs = [
-    { id: "notes", label: "Заметки", icon: icons.note },
-    { id: "ai", label: "ИИ", icon: icons.ai },
-    { id: "quiz", label: "Тесты", icon: icons.quiz },
-  ];
+  if (view === "detail")
+    return (
+      <NoteDetail
+        note={activeNote}
+        categories={data.categories}
+        onEdit={() => setView("edit")}
+        onDelete={() => deleteNote(activeNote.id)}
+        onSummarize={() => aiSummarize(activeNote)}
+        onGenerateQuiz={() => generateQuizFromNote(activeNote)}
+        aiLoading={aiLoading}
+        theme={t}
+        s={s}
+        icons={icons}
+        Icon={Icon}
+      />
+    );
 
   return (
-    <div style={s.app}>
-      <style>{`
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
-          background: ${t.bg};
-          color: ${t.text};
-        }
-        ::-webkit-scrollbar {
-          width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-          background: ${t.surface};
-        }
-        ::-webkit-scrollbar-thumb {
-          background: ${t.border};
-          border-radius: 3px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background: ${t.textMuted};
-        }
-      `}</style>
-
-      <div style={s.header}>
-        {(view !== "list" || (tab !== "ai" && tab !== "quiz")) && (
+    <div>
+      {/* Categories */}
+      <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${t.border}` }}>
+        <div style={{ ...s.row, marginBottom: 12, justifyContent: "space-between" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: t.textMuted }}>КАТЕГОРИИ</div>
+          <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(true)}>
+            <Icon d={icons.plus} size={14} />
+          </button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button
-            style={s.btn("ghost")}
-            onClick={() => {
-              setView("list");
+            style={{
+              ...s.categoryBadge(t.accent),
+              border: activeCategory === null ? `2px solid ${t.accent}` : `1px solid ${t.accent}66`,
+              background: activeCategory === null ? `${t.accent}44` : `${t.accent}22`,
+            }}
+            onClick={() => setActiveCategory(null)}
+          >
+            Все
+          </button>
+          {data.categories.map((cat) => (
+            <div
+              key={cat.id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 2,
+                marginBottom: 4,
+              }}
+            >
+              <button
+                style={{
+                  ...s.categoryBadge(cat.color),
+                  border: activeCategory === cat.id ? `2px solid ${cat.color}` : `1px solid ${cat.color}66`,
+                  background: activeCategory === cat.id ? `${cat.color}44` : `${cat.color}22`,
+                  marginRight: 0,
+                }}
+                onClick={() => setActiveCategory(cat.id)}
+              >
+                {cat.name}
+              </button>
+              <button
+                style={{
+                  background: `${t.danger}22`,
+                  color: t.danger,
+                  border: `1px solid ${t.danger}44`,
+                  borderRadius: "50%",
+                  width: 18,
+                  height: 18,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: 0,
+                  transition: "all 0.2s",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Удалить категорию "${cat.name}"? Заметки станут "без категории"`)) {
+                    deleteCategory(cat.id);
+                  }
+                }}
+                title="Удалить категорию"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Search */}
+      <div style={{ ...s.row, marginBottom: 12 }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <span
+            style={{
+              position: "absolute",
+              left: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: t.textMuted,
             }}
           >
-            <Icon d={icons.back} size={18} />
-          </button>
-        )}
-        <div style={s.headerTitle}>{headerTitle}</div>
-        <button style={s.btn("ghost")} onClick={toggleTheme} title="Переключить тему">
-          <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
+            <Icon d={icons.search} size={16} />
+          </span>
+          <input
+            style={{ ...s.input, paddingLeft: 34 }}
+            placeholder="Поиск по заметкам..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <button style={s.btn("primary")} onClick={newNote}>
+          <Icon d={icons.plus} size={16} /> Новая
         </button>
       </div>
 
-      <div style={s.content}>
-        {tab === "notes" && renderNotes()}
-        {tab === "ai" && renderAI()}
-        {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
-      </div>
-
-      <nav style={s.nav}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            style={s.navBtn(tab === t.id)}
-            onClick={() => setTab(t.id)}
-          >
-            <Icon d={t.icon} size={22} />
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      {/* Category Modal */}
-      {showCategoryModal && (
-        <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
-          <div
-            style={s.modalContent}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ ...s.cardTitle, marginBottom: 16 }}>
-              <Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория
-            </div>
-            <div style={s.section}>
-              <label style={s.label}>Название</label>
-              <input
-                style={s.input}
-                placeholder="Например: 📚 Учёба"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-              />
-            </div>
-            <div style={s.section}>
-              <label style={s.label}>Цвет</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((color) => (
-                  <button
-                    key={color}
+      {/* Notes List */}
+      {filtered.length === 0 ? (
+        <div style={s.empty}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Нет заметок</div>
+          <div style={{ fontSize: 13 }}>
+            {activeCategory !== null ? "Создайте заметку в этой категории" : "Создайте первую заметку"}
+          </div>
+        </div>
+      ) : (
+        filtered.map((note) => {
+          const cat = data.categories.find((c) => c.id === note.categoryId);
+          return (
+            <div
+              key={note.id}
+              style={s.card}
+              onClick={() => {
+                setActiveNote(note);
+                setView("detail");
+              }}
+            >
+              <div style={s.cardTitle}>{note.title || "Без названия"}</div>
+              <div style={s.cardText}>{note.body}</div>
+              <div style={{ marginTop: 8 }}>
+                {cat && <span style={s.categoryBadge(cat.color)}>{cat.name}</span>}
+                {note.tags.map((tag) => (
+                  <span
+                    key={tag}
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 8,
-                      background: color,
-                      border: newCategoryColor === color ? `3px solid ${t.text}` : `2px solid ${t.border}`,
-                      cursor: "pointer",
+                      display: "inline-block",
+                      background: `${t.accent}22`,
+                      color: t.accent,
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      marginRight: 4,
+                      marginBottom: 4,
                     }}
-                    onClick={() => setNewCategoryColor(color)}
-                  />
+                  >
+                    {tag}
+                  </span>
                 ))}
+                <span style={{ fontSize: 11, color: t.textMuted, float: "right", marginTop: 2 }}>
+                  {new Date(note.createdAt).toLocaleDateString("ru")}
+                </span>
               </div>
             </div>
-            <div style={{ ...s.row, justifyContent: "flex-end", gap: 8 }}>
-              <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(false)}>
-                Отмена
-              </button>
-              <button style={s.btn("primary")} onClick={addCategory}>
-                <Icon d={icons.plus} size={16} /> Создать
-              </button>
+          );
+        })
+      )}
+    </div>
+  );
+};
+
+// ── Render AI ──────────────────────────────────────────────────────────────
+const renderAI = () => (
+  <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)" }}>
+    <div
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        paddingBottom: 8,
+      }}
+      ref={chatRef}
+    >
+      {data.chatHistory.length === 0 && (
+        <div style={s.empty}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>ИИ-ассистент</div>
+          <div style={{ fontSize: 13 }}>
+            Я знаю ваши заметки и помогу найти информацию, составить план или ответить на вопросы
+          </div>
+        </div>
+      )}
+      {data.chatHistory.map((m, i) => (
+        <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+          <div style={s.bubble(m.role === "user")}>{m.content}</div>
+        </div>
+      ))}
+      {chatLoading && (
+        <div style={{ display: "flex" }}>
+          <div style={{ ...s.bubble(false), color: t.textMuted }}>Думаю...</div>
+        </div>
+      )}
+    </div>
+    <div
+      style={{
+        ...s.row,
+        paddingTop: 8,
+        borderTop: `1px solid ${t.border}`,
+        paddingBottom: 8,
+      }}
+    >
+      <input
+        style={{ ...s.input, flex: 1 }}
+        placeholder="Спросить ИИ..."
+        value={chatInput}
+        onChange={(e) => setChatInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sendChat()}
+      />
+      <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
+        <Icon d={icons.send} size={16} />
+      </button>
+      {data.chatHistory.length > 0 && (
+        <button
+          style={s.btn("ghost")}
+          onClick={() => persist({ ...data, chatHistory: [] })}
+          title="Очистить"
+        >
+          <Icon d={icons.trash} size={16} />
+        </button>
+      )}
+    </div>
+  </div>
+);
+
+// ── Main render ────────────────────────────────────────────────────────────
+const headerTitle =
+  tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ-ассистент" : "📋 Тесты";
+
+const tabs = [
+  { id: "notes", label: "Заметки", icon: icons.note },
+  { id: "ai", label: "ИИ", icon: icons.ai },
+  { id: "quiz", label: "Тесты", icon: icons.quiz },
+];
+
+return (
+  <div style={s.app}>
+    <style>{`
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+        background: ${t.bg};
+        color: ${t.text};
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: ${t.surface};
+      }
+      ::-webkit-scrollbar-thumb {
+        background: ${t.border};
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: ${t.textMuted};
+      }
+    `}</style>
+
+    <div style={s.header}>
+      {(view !== "list" || (tab !== "ai" && tab !== "quiz")) && (
+        <button
+          style={s.btn("ghost")}
+          onClick={() => {
+            setView("list");
+          }}
+        >
+          <Icon d={icons.back} size={18} />
+        </button>
+      )}
+      <div style={s.headerTitle}>{headerTitle}</div>
+      <button style={s.btn("ghost")} onClick={toggleTheme} title="Переключить тему">
+        <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
+      </button>
+    </div>
+
+    <div style={s.content}>
+      {tab === "notes" && renderNotes()}
+      {tab === "ai" && renderAI()}
+      {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
+    </div>
+
+    <nav style={s.nav}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          style={s.navBtn(tab === t.id)}
+          onClick={() => setTab(t.id)}
+        >
+          <Icon d={t.icon} size={22} />
+          {t.label}
+        </button>
+      ))}
+    </nav>
+
+    {/* Category Modal */}
+    {showCategoryModal && (
+      <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
+        <div
+          style={s.modalContent}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ ...s.cardTitle, marginBottom: 16 }}>
+            <Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория
+          </div>
+          <div style={s.section}>
+            <label style={s.label}>Название</label>
+            <input
+              style={s.input}
+              placeholder="Например: 📚 Учёба"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+            />
+          </div>
+          <div style={s.section}>
+            <label style={s.label}>Цвет</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((color) => (
+                <button
+                  key={color}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 8,
+                    background: color,
+                    border: newCategoryColor === color ? `3px solid ${t.text}` : `2px solid ${t.border}`,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setNewCategoryColor(color)}
+                />
+              ))}
             </div>
+          </div>
+          <div style={{ ...s
+                                   </div>
           </div>
         </div>
       )}
@@ -991,7 +988,6 @@ function NoteDetail({
   categories,
   onEdit,
   onDelete,
-  onBack,
   onSummarize,
   onGenerateQuiz,
   aiLoading,
@@ -1088,4 +1084,4 @@ function NoteDetail({
       )}
     </div>
   );
-}
+          }
