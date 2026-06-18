@@ -553,32 +553,67 @@ ${notesContext || "Заметок пока нет."}`;
             </button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button
-              style={{
-                ...s.categoryBadge(t.accent),
-                border: activeCategory === null ? `2px solid ${t.accent}` : `1px solid ${t.accent}66`,
-                background: activeCategory === null ? `${t.accent}44` : `${t.accent}22`,
-              }}
-              onClick={() => setActiveCategory(null)}
-            >
-              Все
-            </button>
-            {data.categories.map((cat) => (
-              <button
-                key={cat.id}
-                style={{
-                  ...s.categoryBadge(cat.color),
-                  border:
-                    activeCategory === cat.id ? `2px solid ${cat.color}` : `1px solid ${cat.color}66`,
-                  background: activeCategory === cat.id ? `${cat.color}44` : `${cat.color}22`,
-                }}
-                onClick={() => setActiveCategory(cat.id)}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        </div>
+  <button
+    style={{
+      ...s.categoryBadge(t.accent),
+      border: activeCategory === null ? `2px solid ${t.accent}` : `1px solid ${t.accent}66`,
+      background: activeCategory === null ? `${t.accent}44` : `${t.accent}22`,
+    }}
+    onClick={() => setActiveCategory(null)}
+  >
+    Все
+  </button>
+  {data.categories.map((cat) => (
+    <div 
+      key={cat.id} 
+      style={{ 
+        display: "inline-flex",
+        alignItems: "center", 
+        gap: 2,
+        marginBottom: 4
+      }}
+    >
+      <button
+        style={{
+          ...s.categoryBadge(cat.color),
+          border: activeCategory === cat.id ? `2px solid ${cat.color}` : `1px solid ${cat.color}66`,
+          background: activeCategory === cat.id ? `${cat.color}44` : `${cat.color}22`,
+          marginRight: 0,
+        }}
+        onClick={() => setActiveCategory(cat.id)}
+      >
+        {cat.name}
+      </button>
+      <button
+        style={{
+          background: `${t.danger}22`,
+          color: t.danger,
+          border: `1px solid ${t.danger}44`,
+          borderRadius: "50%",
+          width: 18,
+          height: 18,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          padding: 0,
+          transition: "all 0.2s",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (window.confirm(`Удалить категорию "${cat.name}"? Заметки станут "без категории"`)) {
+            deleteCategory(cat.id);
+          }
+        }}
+        title="Удалить категорию"
+      >
+        ×
+      </button>
+    </div>
+  ))}
+</div>
 
         {/* Search */}
         <div style={{ ...s.row, marginBottom: 12 }}>
