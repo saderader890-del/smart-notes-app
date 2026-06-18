@@ -286,7 +286,7 @@ ${notesContext || "Заметок пока нет."}`;
         ],
         "Ты генератор тестов. Отвечай ТОЛЬКО валидным JSON без объяснений и без markdown."
       );
-      const clean = reply.replace(/```json|```/g, "").trim();
+      let clean = reply.replace(/```json\s*/, "").replace(/```\s*/, "").trim();
       const questions = JSON.parse(clean);
       const quiz = {
         id: Date.now(),
