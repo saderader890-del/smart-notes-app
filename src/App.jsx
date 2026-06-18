@@ -271,40 +271,6 @@ ${notesContext || "Заметок пока нет."}`;
     } catch (_) {}
     setAiLoading(false);
   };
-
-  const generateQuizFromNote = async (note) => {
-    setAiLoading(true);
-    try {
-      const reply = await askGroq(
-        [
-          {
-            role: "user",
-            content: `Создай тест из 4 вопросов по этой заметке. Верни ТОЛЬКО JSON массив без markdown:
-[{"q":"вопрос","options":["вар1","вар2","вар3","вар4"],"answer":0}]
-Заметка: ${note.title}\n${note.body}`,
-          },
-        ],
-        "Ты генератор тестов. Отвечай ТОЛЬКО валидным JSON без объяснений и без markdown."
-      );
-      let clean = reply.replace(/```json\s*/, "").replace(/```\s*/, "").trim();
-      const questions = JSON.parse(clean);
-      const quiz = {
-        id: Date.now(),
-        title: `Тест: ${note.title}`,
-        sourceNoteId: note.id,
-        questions,
-        createdAt: new Date().toISOString(),
-        results: [],
-      };
-      persist({ ...data, quizzes: [quiz, ...data.quizzes] });
-      setTab("quiz");
-    } catch (e) {
-      alert("Не удалось сгенерировать тест. Попробуйте ещё раз.");
-      console.error(e);
-    }
-    setAiLoading(false);
-  };
-
 // ── Styles ────────────────────────────────────────────────────────────────
 const s = {
   app: {
