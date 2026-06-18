@@ -180,12 +180,7 @@ export default function SmartNotesApp() {
     setNewCategoryColor("#6366F1");
     setShowCategoryModal(false);
   };
-
-  const deleteCategory = (id) => {
-    const notes = data.notes.map((n) => (n.categoryId === id ? { ...n, categoryId: null } : n));
-    persist({ ...data, categories: data.categories.filter((c) => c.id !== id), notes });
-  };
-
+  
   // ── Notes helpers ──────────────────────────────────────────────────────────
   const newNote = () => {
     setActiveNote({
