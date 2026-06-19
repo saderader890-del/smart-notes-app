@@ -132,7 +132,7 @@ const icons = {
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   settings: "M12 2c-5.33 4.55-8 8.48-8 14.8 0 5.64 2.05 7.2 8 7.2s8-1.56 8-7.2c0-6.32-2.67-10.25-8-14.8z",
 };
-// ─── Main App ──────────────────────────────────────────────────────────────
+  // ─── Main App ──────────────────────────────────────────────────────────────
 export default function SmartNotesApp() {
   const [data, setData] = useState(loadData);
   const [theme, setTheme] = useState(data.theme);
@@ -474,8 +474,8 @@ const s = {
     maxWidth: 400,
     border: `1px solid ${t.border}`,
   },
-} 
-// ── Render Notes ───────────────────────────────────────────────────────────
+};
+  // ── Render Notes ───────────────────────────────────────────────────────────
 const renderNotes = () => {
   if (view === "edit")
     return (
@@ -495,8 +495,8 @@ const renderNotes = () => {
         categories={data.categories}
         onEdit={() => setView("edit")}
         onDelete={() => deleteNote(activeNote.id)}
+        onBack={() => setView("list")}
         onSummarize={() => aiSummarize(activeNote)}
-        onGenerateQuiz={() => generateQuizFromNote(activeNote)}
         aiLoading={aiLoading}
         theme={t}
         s={s}
@@ -659,186 +659,191 @@ const renderNotes = () => {
     </div>
   );
 };
-
-// ── Render AI ──────────────────────────────────────────────────────────────
-const renderAI = () => (
-  <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)" }}>
-    <div
-      style={{
-        flex: 1,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        paddingBottom: 8,
-      }}
-      ref={chatRef}
-    >
-      {data.chatHistory.length === 0 && (
-        <div style={s.empty}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>ИИ-ассистент</div>
-          <div style={{ fontSize: 13 }}>
-            Я знаю ваши заметки и помогу найти информацию, составить план или ответить на вопросы
-          </div>
-        </div>
-      )}
-      {data.chatHistory.map((m, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-          <div style={s.bubble(m.role === "user")}>{m.content}</div>
-        </div>
-      ))}
-      {chatLoading && (
-        <div style={{ display: "flex" }}>
-          <div style={{ ...s.bubble(false), color: t.textMuted }}>Думаю...</div>
-        </div>
-      )}
-    </div>
-    <div
-      style={{
-        ...s.row,
-        paddingTop: 8,
-        borderTop: `1px solid ${t.border}`,
-        paddingBottom: 8,
-      }}
-    >
-      <input
-        style={{ ...s.input, flex: 1 }}
-        placeholder="Спросить ИИ..."
-        value={chatInput}
-        onChange={(e) => setChatInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && sendChat()}
-      />
-      <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
-        <Icon d={icons.send} size={16} />
-      </button>
-      {data.chatHistory.length > 0 && (
-        <button
-          style={s.btn("ghost")}
-          onClick={() => persist({ ...data, chatHistory: [] })}
-          title="Очистить"
-        >
-          <Icon d={icons.trash} size={16} />
-        </button>
-      )}
-    </div>
-  </div>
-);
-
-// ── Main render ────────────────────────────────────────────────────────────
-const headerTitle =
-  tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ-ассистент" : "📋 Тесты";
-
-const tabs = [
-  { id: "notes", label: "Заметки", icon: icons.note },
-  { id: "ai", label: "ИИ", icon: icons.ai },
-  { id: "quiz", label: "Тесты", icon: icons.quiz },
-];
-
-return (
-  <div style={s.app}>
-    <style>{`
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
-        background: ${t.bg};
-        color: ${t.text};
-      }
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: ${t.surface};
-      }
-      ::-webkit-scrollbar-thumb {
-        background: ${t.border};
-        border-radius: 3px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: ${t.textMuted};
-      }
-    `}</style>
-
-    <div style={s.header}>
-      {(view !== "list" || (tab !== "ai" && tab !== "quiz")) && (
-        <button
-          style={s.btn("ghost")}
-          onClick={() => {
-            setView("list");
-          }}
-        >
-          <Icon d={icons.back} size={18} />
-        </button>
-      )}
-      <div style={s.headerTitle}>{headerTitle}</div>
-      <button style={s.btn("ghost")} onClick={toggleTheme} title="Переключить тему">
-        <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
-      </button>
-    </div>
-
-    <div style={s.content}>
-      {tab === "notes" && renderNotes()}
-      {tab === "ai" && renderAI()}
-      {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
-    </div>
-
-    <nav style={s.nav}>
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          style={s.navBtn(tab === t.id)}
-          onClick={() => setTab(t.id)}
-        >
-          <Icon d={t.icon} size={22} />
-          {t.label}
-        </button>
-      ))}
-    </nav>
-
-    {/* Category Modal */}
-    {showCategoryModal && (
-      <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
-        <div
-          style={s.modalContent}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ ...s.cardTitle, marginBottom: 16 }}>
-            <Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория
-          </div>
-          <div style={s.section}>
-            <label style={s.label}>Название</label>
-            <input
-              style={s.input}
-              placeholder="Например: 📚 Учёба"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-            />
-          </div>
-          <div style={s.section}>
-            <label style={s.label}>Цвет</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((color) => (
-                <button
-                  key={color}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 8,
-                    background: color,
-                    border: newCategoryColor === color ? `3px solid ${t.text}` : `2px solid ${t.border}`,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => setNewCategoryColor(color)}
-                />
-              ))}
+    // ── Render AI ──────────────────────────────────────────────────────────────
+  const renderAI = () => (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)" }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          paddingBottom: 8,
+        }}
+        ref={chatRef}
+      >
+        {data.chatHistory.length === 0 && (
+          <div style={s.empty}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>ИИ-ассистент</div>
+            <div style={{ fontSize: 13 }}>
+              Я знаю ваши заметки и помогу найти информацию, составить план или ответить на вопросы
             </div>
           </div>
-          <div style={{ ...s
-                                   </div>
+        )}
+        {data.chatHistory.map((m, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+            <div style={s.bubble(m.role === "user")}>{m.content}</div>
+          </div>
+        ))}
+        {chatLoading && (
+          <div style={{ display: "flex" }}>
+            <div style={{ ...s.bubble(false), color: t.textMuted }}>Думаю...</div>
+          </div>
+        )}
+      </div>
+      <div
+        style={{
+          ...s.row,
+          paddingTop: 8,
+          borderTop: `1px solid ${t.border}`,
+          paddingBottom: 8,
+        }}
+      >
+        <input
+          style={{ ...s.input, flex: 1 }}
+          placeholder="Спросить ИИ..."
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendChat()}
+        />
+        <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
+          <Icon d={icons.send} size={16} />
+        </button>
+        {data.chatHistory.length > 0 && (
+          <button
+            style={s.btn("ghost")}
+            onClick={() => persist({ ...data, chatHistory: [] })}
+            title="Очистить"
+          >
+            <Icon d={icons.trash} size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Main render ────────────────────────────────────────────────────────────
+  const headerTitle =
+    tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ-ассистент" : "📋 Тесты";
+
+  const tabs = [
+    { id: "notes", label: "Заметки", icon: icons.note },
+    { id: "ai", label: "ИИ", icon: icons.ai },
+    { id: "quiz", label: "Тесты", icon: icons.quiz },
+  ];
+
+  return (
+    <div style={s.app}>
+      <style>{`
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+          background: ${t.bg};
+          color: ${t.text};
+        }
+        ::-webkit-scrollbar {
+          width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+          background: ${t.surface};
+        }
+        ::-webkit-scrollbar-thumb {
+          background: ${t.border};
+          border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: ${t.textMuted};
+        }
+      `}</style>
+
+      <div style={s.header}>
+        {(view !== "list" || (tab !== "ai" && tab !== "quiz")) && (
+          <button
+            style={s.btn("ghost")}
+            onClick={() => {
+              setView("list");
+            }}
+          >
+            <Icon d={icons.back} size={18} />
+          </button>
+        )}
+        <div style={s.headerTitle}>{headerTitle}</div>
+        <button style={s.btn("ghost")} onClick={toggleTheme} title="Переключить тему">
+          <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
+        </button>
+      </div>
+
+      <div style={s.content}>
+        {tab === "notes" && renderNotes()}
+        {tab === "ai" && renderAI()}
+        {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
+      </div>
+
+      <nav style={s.nav}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            style={s.navBtn(tab === t.id)}
+            onClick={() => setTab(t.id)}
+          >
+            <Icon d={t.icon} size={22} />
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Category Modal */}
+      {showCategoryModal && (
+        <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
+          <div
+            style={s.modalContent}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ ...s.cardTitle, marginBottom: 16 }}>
+              <Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория
+            </div>
+            <div style={s.section}>
+              <label style={s.label}>Название</label>
+              <input
+                style={s.input}
+                placeholder="Например: 📚 Учёба"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+              />
+            </div>
+            <div style={s.section}>
+              <label style={s.label}>Цвет</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((color) => (
+                  <button
+                    key={color}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 8,
+                      background: color,
+                      border: newCategoryColor === color ? `3px solid ${t.text}` : `2px solid ${t.border}`,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setNewCategoryColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div style={{ ...s.row, justifyContent: "flex-end", gap: 8 }}>
+              <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(false)}>
+                Отмена
+              </button>
+              <button style={s.btn("primary")} onClick={addCategory}>
+                <Icon d={icons.plus} size={16} /> Создать
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -954,8 +959,8 @@ function NoteDetail({
   categories,
   onEdit,
   onDelete,
+  onBack,
   onSummarize,
-  onGenerateQuiz,
   aiLoading,
   theme: t,
   s,
@@ -1020,9 +1025,6 @@ function NoteDetail({
         >
           <Icon d={icons.star} size={16} /> {aiLoading ? "Анализирую..." : "ИИ-резюме и вопросы"}
         </button>
-        <button style={s.btn("secondary")} onClick={onGenerateQuiz} disabled={aiLoading}>
-          <Icon d={icons.quiz} size={16} /> {aiLoading ? "Генерирую..." : "Создать тест с ИИ"}
-        </button>
       </div>
       {showSummary && note.aiSummary && (
         <div
@@ -1050,4 +1052,4 @@ function NoteDetail({
       )}
     </div>
   );
-          }
+}
