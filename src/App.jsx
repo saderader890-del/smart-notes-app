@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-
+import { useState, useEffect, useRef, useMemo } from "react";
 // ─── Theme Palette ───────────────────────────────────────────────────────
 const themes = {
   dark: {
@@ -272,7 +271,7 @@ ${notesContext || "Заметок пока нет."}`;
     setAiLoading(false);
   };
 // ── Styles ────────────────────────────────────────────────────────────────
-const s = {
+  const s = useMemo(() => ({
   app: {
     minHeight: "100vh",
     background: t.bg,
@@ -474,7 +473,7 @@ const s = {
     maxWidth: 400,
     border: `1px solid ${t.border}`,
   },
-};
+}), [t]);
   // ── Render Notes ───────────────────────────────────────────────────────────
 const renderNotes = () => {
   if (view === "edit")
