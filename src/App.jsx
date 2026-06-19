@@ -477,7 +477,7 @@ ${notesContext || "Заметок пока нет."}`;
     maxWidth: 400,
     border: `1px solid ${t.border}`,
   },
-}), [t]);
+}), [t, theme]);
   // ── Render Notes ───────────────────────────────────────────────────────────
 const renderNotes = () => {
   if (view === "edit")
