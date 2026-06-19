@@ -298,14 +298,18 @@ ${notesContext || "Заметок пока нет."}`;
     transition: "background 0.3s, border-color 0.3s",
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 700,
-    letterSpacing: "-0.3px",
-    flex: 1,
-    background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})`,
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-  },
+  fontSize: 18,
+  fontWeight: 700,
+  letterSpacing: "-0.3px",
+  flex: 1,
+  // На темной теме — градиент, на светлой — обычный цвет
+  color: theme === 'dark' ? 'transparent' : t.accent,
+  background: theme === 'dark' 
+    ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})` 
+    : 'none',
+  WebkitBackgroundClip: theme === 'dark' ? 'text' : 'unset',
+  WebkitTextFillColor: theme === 'dark' ? 'transparent' : 'unset',
+  }
   nav: {
     display: "flex",
     background: t.surface,
