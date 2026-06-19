@@ -309,7 +309,7 @@ ${notesContext || "Заметок пока нет."}`;
     : 'none',
   WebkitBackgroundClip: theme === 'dark' ? 'text' : 'unset',
   WebkitTextFillColor: theme === 'dark' ? 'transparent' : 'unset',
-  }
+  },
   nav: {
     display: "flex",
     background: t.surface,
