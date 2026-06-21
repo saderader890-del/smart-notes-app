@@ -464,8 +464,8 @@ export default function SmartNotesApp() {
   const [newCategoryColor, setNewCategoryColor] = useState("#6366F1");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [librarySearch, setLibrarySearch] = useState("");
-  const [libName, setLibName] = useState(""); // для библиотеки
-  const [libContent, setLibContent] = useState(""); // для библиотеки
+  const [libName, setLibName] = useState("");
+  const [libContent, setLibContent] = useState("");
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
   const chatRef = useRef(null);
@@ -474,6 +474,14 @@ export default function SmartNotesApp() {
   const [draftExists, setDraftExists] = useState(false);
   const [saveTimer, setSaveTimer] = useState(null);
   const t = themes[theme];
+
+  // ─── Фильтрация библиотеки (исправлено: useMemo на верхнем уровне)
+  const filteredLibrary = useMemo(() => {
+    return data.library.filter((item) =>
+      item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      item.content.toLowerCase().includes(librarySearch.toLowerCase())
+    );
+  }, [data.library, librarySearch]);
 
   // ─── Адаптация под устройства
   // ──────────────────────────────────────────────
@@ -661,7 +669,7 @@ export default function SmartNotesApp() {
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   };
-    const addCategory = () => {
+        const addCategory = () => {
     if (!newCategoryName.trim()) return;
     const category = {
       id: Date.now(),
@@ -1401,14 +1409,6 @@ const renderAI = () => (
 );
 
 const renderLibrary = () => {
-  // Используем useMemo для фильтрации
-  const filteredLibrary = useMemo(() => {
-    return data.library.filter((item) =>
-      item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-      item.content.toLowerCase().includes(librarySearch.toLowerCase())
-    );
-  }, [data.library, librarySearch]);
-
   const handleAddToLibrary = () => {
     if (libName.trim() && libContent.trim()) {
       addToLibrary(libName, libContent, "file");
@@ -1516,7 +1516,7 @@ const renderLibrary = () => {
     </div>
   );
 };
-    const tabs = [
+        const tabs = [
     { id: "notes", label: "Заметки", icon: icons.note },
     { id: "ai", label: "ИИ", icon: icons.ai },
     { id: "library", label: "Библиотека", icon: icons.library },
@@ -1717,3 +1717,4 @@ const renderLibrary = () => {
     </div>
   );
 }
+
