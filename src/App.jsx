@@ -1371,7 +1371,22 @@ ${libraryContext || "Библиотека пуста."}`;
       }
       setChatLoading(false);
     };
-
+const aiSummarize = async (note) => {
+  setAiLoading(true);
+  try {
+    const reply = await askAI(
+      [
+        {
+          role: "user",
+          content: `Сделай краткое резюме этой заметки и предложи 3 вопроса для самопроверки:\n\n${note.title}\n${note.blocks ? note.blocks.map(b => b.text).join(' ') : note.body}`,
+        },
+      ],
+      "Ты помощник для учёбы. Отвечай на русском."
+    );
+    setActiveNote({ ...note, aiSummary: reply });
+  } catch (_) {}
+  setAiLoading(false);
+};
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - " + (isMobile ? "180px" : "200px") + ")" }}>
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 8 }} ref={chatRef}>
