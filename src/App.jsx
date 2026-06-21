@@ -338,7 +338,6 @@ function NoteDetail({
     if (contentRef.current) {
       const savedPos = loadScrollPosition(note.id);
       contentRef.current.scrollTop = savedPos;
-      setScrollPosition(savedPos);
     }
   }, [note.id]);
 
@@ -346,7 +345,6 @@ function NoteDetail({
   const handleScroll = () => {
     if (contentRef.current) {
       const pos = contentRef.current.scrollTop;
-      setScrollPosition(pos);
       saveScrollPosition(note.id, pos);
     }
   };
