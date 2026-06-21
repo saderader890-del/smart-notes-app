@@ -198,9 +198,10 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
 
   const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
 
-  // Исправлено: убрана неиспользуемая переменная и добавлены зависимости
+  // Исправлено: убрана неиспользуемая переменная updatedNote
   useEffect(() => {
-    // Ничего не делаем, просто следим за изменениями
+    // Следим за изменениями для автосохранения
+    // Родительский компонент сам решает когда сохранять
   }, [title, body, tags, categoryId]);
 
   return (
@@ -291,7 +292,7 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
       </div>
     </div>
   );
-}
+                }
 // ─── Note Detail
 // ────────────────────────────────────────────────────────
 
@@ -419,8 +420,7 @@ export default function SmartNotesApp() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [librarySearch, setLibrarySearch] = useState("");
   const [orientation, setOrientation] = useState(window.innerWidth > window.innerHeight ? "landscape" : "portrait");
-  // Исправлено: убрана неиспользуемая переменная isMobile
-  // const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  // Исправлено: удалена неиспользуемая переменная isMobile
   const chatRef = useRef(null);
 
   const [saveStatus, setSaveStatus] = useState('idle');
@@ -446,7 +446,7 @@ export default function SmartNotesApp() {
     }
   }, []);
 
-  // Исправлено: добавлены зависимости
+  // Исправлено: добавлены все зависимости
   useEffect(() => {
     if (view === 'edit' && activeNote) {
       if (saveTimer) clearTimeout(saveTimer);
@@ -536,9 +536,7 @@ export default function SmartNotesApp() {
     setDraftExists(false);
     showNotification('🗑️ Черновик удален');
   };
-    // ... продолжение SmartNotesApp
-
-  const showNotification = (message) => {
+    const showNotification = (message) => {
     const notification = document.createElement('div');
     notification.style.cssText = `
       position: fixed;
@@ -570,7 +568,6 @@ export default function SmartNotesApp() {
     const handleOrientationChange = () => {
       const isLandscape = window.innerWidth > window.innerHeight;
       setOrientation(isLandscape ? "landscape" : "portrait");
-      // setIsMobile(window.innerWidth < 768); // удалено
     };
     window.addEventListener("orientationchange", handleOrientationChange);
     window.addEventListener("resize", handleOrientationChange);
@@ -748,7 +745,7 @@ ${libraryContext || "Библиотека пуста."}`;
     xl: isLandscape ? 24 : 20,
   };
 
-  // Исправлено: добавлены недостающие зависимости
+  // Исправлено: добавлены все зависимости
   const s = useMemo(
     () => ({
       app: {
@@ -1410,7 +1407,7 @@ const renderLibrary = () => {
     </div>
   );
 };
-  const headerTitle =
+    const headerTitle =
     tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ" : tab === "library" ? "📚 Библиотека" : "📋 Тесты";
 
   const tabs = [
@@ -1587,5 +1584,4 @@ const renderLibrary = () => {
       <SaveIndicator />
     </div>
   );
-}  
-  
+}
