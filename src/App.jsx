@@ -37,6 +37,7 @@ const themes = {
 
 const STORAGE_KEY = "smartnotes_v3";
 const DRAFT_KEY = "smartnotes_draft";
+const SCROLL_POSITION_KEY = "smartnotes_scroll";
 
 function loadData() {
   try {
@@ -83,6 +84,20 @@ function clearDraft() {
     localStorage.removeItem(DRAFT_KEY);
   } catch (_) {}
 }
+
+function saveScrollPosition(noteId, position) {
+  try {
+    localStorage.setItem(`${SCROLL_POSITION_KEY}_${noteId}`, String(position));
+  } catch (_) {}
+}
+
+function loadScrollPosition(noteId) {
+  try {
+    const pos = localStorage.getItem(`${SCROLL_POSITION_KEY}_${noteId}`);
+    return pos ? parseInt(pos) : 0;
+  } catch (_) {}
+  return 0;
+}
 // ─── Mock AI helper
 // ───────────────────────────────────────────────────
 
@@ -90,31 +105,31 @@ async function askAI(messages, systemPrompt) {
   const userMessage = messages[messages.length - 1]?.content || "";
 
   try {
-    const response = await fetch('http://localhost:11434/api/tags', {
-      signal: AbortSignal.timeout(2000)
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "mistralai/mistral-7b-instruct:free",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages
+        ],
+        max_tokens: 500,
+      }),
+      signal: AbortSignal.timeout(15000)
     });
-    if (response.ok) {
-      const chatResponse = await fetch('http://localhost:11434/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "llama3.2",
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...messages
-          ],
-          stream: false
-        }),
-        signal: AbortSignal.timeout(10000)
-      });
-      if (chatResponse.ok) {
-        const data = await chatResponse.json();
-        return data.message.content;
-      }
-    }
-  } catch (_) {}
 
-  const responses = {
+    if (response.ok) {
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
+    }
+  } catch (error) {
+    console.log('AI error:', error);
+  }
+
+  const fallbackResponses = {
     "создай": "✅ Заметка создана! Вы можете начать писать содержимое.",
     "удали": "✅ Заметка удалена. Подтвердите удаление в диалоговом окне.",
     "переместить": "✅ Заметка перемещена в выбранную категорию.",
@@ -125,13 +140,13 @@ async function askAI(messages, systemPrompt) {
     "помощь": "ℹ️ Я могу:\n- Создавать и удалять заметки\n- Организовывать их в категории\n- Анализировать содержимое\n- Искать информацию в библиотеке\n- Помогать с учебой",
   };
 
-  for (const [key, value] of Object.entries(responses)) {
+  for (const [key, value] of Object.entries(fallbackResponses)) {
     if (userMessage.toLowerCase().includes(key)) {
       return value;
     }
   }
 
-  return `Спасибо за вопрос: "${userMessage}"\n\nЯ помогу вам организовать информацию. Используйте меня для:\n• Анализа заметок\n• Поиска информации\n• Создания и управления категориями\n\n(Примечание: Для полной функциональности запустите: ollama serve)`;
+  return `Спасибо за вопрос: "${userMessage}"\n\nЯ помогу вам организовать информацию. Используйте меня для:\n• Анализа заметок\n• Поиска информации\n• Создания и управления категориями\n\n(Примечание: Для полной функциональности используйте OpenRouter API)`;
 }
 
 // ─── Icons
@@ -178,7 +193,7 @@ const icons = {
 // ─── Note Editor
 // ────────────────────────────────────────────────────────
 
-function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Icon, isLandscape }) {
+function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Icon, isTablet }) {
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [tagInput, setTagInput] = useState("");
@@ -193,12 +208,20 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
 
   const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
 
+  // Автосохранение в черновик при изменениях
   useEffect(() => {
-    // Следим за изменениями
+    const draftNote = { ...note, title, body, tags, categoryId };
+    saveDraft(draftNote);
   }, [title, body, tags, categoryId]);
 
   return (
-    <div style={{ display: isLandscape ? "grid" : "block", gridTemplateColumns: isLandscape ? "1fr 1fr" : undefined, gap: isLandscape ? "20px" : undefined }}>
+    <div style={{ 
+      display: isTablet ? "grid" : "block",
+      gridTemplateColumns: isTablet ? "1fr 1fr" : undefined,
+      gap: isTablet ? "24px" : undefined,
+      maxWidth: "100%",
+      margin: "0 auto",
+    }}>
       <div>
         <div style={s.section}>
           <label style={s.label}>Название</label>
@@ -225,17 +248,17 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
           </select>
         </div>
       </div>
-      <div style={isLandscape ? {} : s.section}>
+      <div style={isTablet ? {} : s.section}>
         <label style={s.label}>Содержание</label>
         <textarea
           style={s.textarea}
           placeholder="Запишите всё, что хотите сохранить..."
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          rows={isLandscape ? 8 : 6}
+          rows={isTablet ? 10 : 6}
         />
       </div>
-      <div style={isLandscape ? { gridColumn: "1 / -1" } : {}}>
+      <div style={isTablet ? { gridColumn: "1 / -1" } : {}}>
         <div style={s.section}>
           <label style={s.label}>Теги</label>
           <div style={{ ...s.row, marginBottom: 8 }}>
@@ -277,7 +300,10 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
           </button>
           <button
             style={s.btn("primary")}
-            onClick={() => onSave({ ...note, title, body, tags, categoryId })}
+            onClick={() => {
+              onSave({ ...note, title, body, tags, categoryId });
+              clearDraft();
+            }}
           >
             ✓ Сохранить
           </button>
@@ -301,14 +327,40 @@ function NoteDetail({
   s,
   icons,
   Icon,
-  isLandscape,
+  isTablet,
 }) {
   const [showSummary, setShowSummary] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const contentRef = useRef(null);
   const cat = categories.find((c) => c.id === note.categoryId);
 
+  // Восстановление позиции прокрутки
+  useEffect(() => {
+    if (contentRef.current) {
+      const savedPos = loadScrollPosition(note.id);
+      contentRef.current.scrollTop = savedPos;
+      setScrollPosition(savedPos);
+    }
+  }, [note.id]);
+
+  // Сохранение позиции прокрутки
+  const handleScroll = () => {
+    if (contentRef.current) {
+      const pos = contentRef.current.scrollTop;
+      setScrollPosition(pos);
+      saveScrollPosition(note.id, pos);
+    }
+  };
+
   return (
-    <div style={{ display: isLandscape ? "grid" : "block", gridTemplateColumns: isLandscape ? "1fr 1fr" : undefined, gap: isLandscape ? "20px" : undefined }}>
-      <div>
+    <div style={{ 
+      display: isTablet ? "grid" : "block",
+      gridTemplateColumns: isTablet ? "1fr 1fr" : undefined,
+      gap: isTablet ? "24px" : undefined,
+      maxWidth: "100%",
+      margin: "0 auto",
+    }}>
+      <div ref={contentRef} onScroll={handleScroll} style={{ maxHeight: isTablet ? "70vh" : "auto", overflowY: "auto" }}>
         <div style={{ ...s.row, justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: t.textMuted }}>
             {new Date(note.createdAt).toLocaleString("ru")}
@@ -323,10 +375,10 @@ function NoteDetail({
           </div>
         </div>
         {cat && <span style={s.categoryBadge(cat.color)}>{cat.name}</span>}
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12, color: t.text }}>
+        <h2 style={{ fontSize: isTablet ? 24 : 20, fontWeight: 700, marginBottom: 12, color: t.text }}>
           {note.title || "Без названия"}
         </h2>
-        <p style={{ fontSize: 15, lineHeight: 1.7, color: t.text, whiteSpace: "pre-wrap", marginBottom: 16 }}>
+        <p style={{ fontSize: isTablet ? 16 : 15, lineHeight: 1.7, color: t.text, whiteSpace: "pre-wrap", marginBottom: 16 }}>
           {note.body}
         </p>
         {note.tags?.length > 0 && (
@@ -352,7 +404,7 @@ function NoteDetail({
           </div>
         )}
       </div>
-      <div style={isLandscape ? {} : { borderTop: `1px solid ${t.border}`, paddingTop: 16 }}>
+      <div style={isTablet ? {} : { borderTop: `1px solid ${t.border}`, paddingTop: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button
             style={s.btn("secondary")}
@@ -412,13 +464,63 @@ export default function SmartNotesApp() {
   const [newCategoryColor, setNewCategoryColor] = useState("#6366F1");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [librarySearch, setLibrarySearch] = useState("");
-  const [orientation, setOrientation] = useState(window.innerWidth > window.innerHeight ? "landscape" : "portrait");
+  const [libName, setLibName] = useState(""); // для библиотеки
+  const [libContent, setLibContent] = useState(""); // для библиотеки
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [windowHeight, setWindowHeight] = useState(window.innerHeight);
   const chatRef = useRef(null);
 
   const [saveStatus, setSaveStatus] = useState('idle');
   const [draftExists, setDraftExists] = useState(false);
   const [saveTimer, setSaveTimer] = useState(null);
   const t = themes[theme];
+
+  // ─── Адаптация под устройства
+  // ──────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    handleResize();
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, []);
+
+  const isMobile = windowWidth < 768;
+  const isTablet = windowWidth >= 768 && windowWidth < 1024;
+  const isDesktop = windowWidth >= 1024;
+  const isLandscape = windowWidth > windowHeight;
+
+  // Отступы в зависимости от устройства
+  let maxWidth, contentPadding, headerPadding, cardPadding, bottomNavPadding;
+
+  if (isMobile) {
+    maxWidth = isLandscape ? "100%" : "480px";
+    contentPadding = "16px";
+    headerPadding = "20px 16px 12px";
+    cardPadding = "16px";
+    bottomNavPadding = "60px";
+  } else if (isTablet) {
+    maxWidth = "100%";
+    contentPadding = isLandscape ? "32px" : "24px";
+    headerPadding = isLandscape ? "20px 32px 16px" : "24px 24px 16px";
+    cardPadding = isLandscape ? "24px" : "20px";
+    bottomNavPadding = "72px";
+  } else {
+    maxWidth = "100%";
+    contentPadding = "40px";
+    headerPadding = "24px 40px 16px";
+    cardPadding = "24px";
+    bottomNavPadding = "80px";
+  }
+
+  const gridColumns = isMobile ? 1 : isTablet ? 2 : 3;
 
   const persist = (next) => {
     setData(next);
@@ -431,6 +533,7 @@ export default function SmartNotesApp() {
     persist({ ...data, theme: newTheme });
   };
 
+  // Проверка черновика
   useEffect(() => {
     const draft = loadDraft();
     if (draft && (draft.title || draft.body)) {
@@ -438,6 +541,7 @@ export default function SmartNotesApp() {
     }
   }, []);
 
+  // Автосохранение
   useEffect(() => {
     if (view === 'edit' && activeNote) {
       if (saveTimer) clearTimeout(saveTimer);
@@ -479,6 +583,7 @@ export default function SmartNotesApp() {
     }
   }, [activeNote, view, data, saveStatus, saveTimer]);
 
+  // Сохранение при потере фокуса
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && view === 'edit' && activeNote && (activeNote.title || activeNote.body)) {
@@ -499,6 +604,7 @@ export default function SmartNotesApp() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [activeNote, view, data]);
 
+  // Предупреждение при закрытии
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (view === 'edit' && activeNote && (activeNote.title || activeNote.body)) {
@@ -532,7 +638,7 @@ export default function SmartNotesApp() {
     const notification = document.createElement('div');
     notification.style.cssText = `
       position: fixed;
-      bottom: 20px;
+      bottom: ${isMobile ? '80px' : '100px'};
       left: 50%;
       transform: translateX(-50%);
       padding: 12px 24px;
@@ -555,24 +661,7 @@ export default function SmartNotesApp() {
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   };
-    useEffect(() => {
-    const handleOrientationChange = () => {
-      const isLandscape = window.innerWidth > window.innerHeight;
-      setOrientation(isLandscape ? "landscape" : "portrait");
-    };
-    window.addEventListener("orientationchange", handleOrientationChange);
-    window.addEventListener("resize", handleOrientationChange);
-    return () => {
-      window.removeEventListener("orientationchange", handleOrientationChange);
-      window.removeEventListener("resize", handleOrientationChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-  }, [data.chatHistory]);
-
-  const addCategory = () => {
+    const addCategory = () => {
     if (!newCategoryName.trim()) return;
     const category = {
       id: Date.now(),
@@ -723,21 +812,17 @@ ${libraryContext || "Библиотека пуста."}`;
     showNotification('🗑️ Файл удален из библиотеки');
   };
 
-  const isLandscape = orientation === "landscape";
-  const maxWidth = isLandscape ? "100%" : "480px";
-  const contentPadding = isLandscape ? "24px" : "16px";
-  const headerPadding = isLandscape ? "16px 24px 12px" : "20px 16px 12px";
-  const cardPadding = isLandscape ? "20px" : "16px";
+  // ─── Стили
+  // ──────────────────────────────────────────────────
 
-  // ⚠️ ВАЖНО: fontSize ПЕРЕМЕЩЕН ВНУТРЬ useMemo
   const s = useMemo(
     () => {
       const fontSize = {
-        xs: isLandscape ? 11 : 10,
-        sm: isLandscape ? 14 : 13,
-        md: isLandscape ? 16 : 15,
-        lg: isLandscape ? 20 : 18,
-        xl: isLandscape ? 24 : 20,
+        xs: isMobile ? 10 : 12,
+        sm: isMobile ? 13 : 15,
+        md: isMobile ? 15 : 17,
+        lg: isMobile ? 18 : 22,
+        xl: isMobile ? 20 : 26,
       };
 
       return {
@@ -768,7 +853,7 @@ ${libraryContext || "Библиотека пуста."}`;
           top: 0,
           zIndex: 10,
           transition: "background 0.3s, border-color 0.3s",
-          minHeight: isLandscape ? "60px" : "56px",
+          minHeight: isMobile ? (isLandscape ? "60px" : "56px") : "72px",
         },
         headerTitle: {
           fontSize: fontSize.lg,
@@ -780,43 +865,13 @@ ${libraryContext || "Библиотека пуста."}`;
           WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
           WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
         },
-        tabsContainer: {
-          display: "flex",
-          background: t.surface,
-          borderBottom: `2px solid ${t.border}`,
-          position: "sticky",
-          top: isLandscape ? "60px" : "56px",
-          zIndex: 9,
-          overflowX: "auto",
-          padding: "0 8px",
-          minHeight: isLandscape ? "56px" : "52px",
-          scrollBehavior: "smooth",
-        },
-        tabButton: (active) => ({
-          flex: "0 0 auto",
-          padding: isLandscape ? "12px 20px" : "12px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          background: "none",
-          border: "none",
-          borderBottom: active ? `3px solid ${t.accent}` : "3px solid transparent",
-          color: active ? t.accent : t.textMuted,
-          fontSize: fontSize.sm,
-          fontWeight: active ? 700 : 500,
-          cursor: "pointer",
-          transition: "all 0.3s",
-          whiteSpace: "nowrap",
-        }),
-        nav: {
-          display: "none",
-        },
         content: {
           flex: 1,
           padding: contentPadding,
           overflowY: "auto",
           animation: "fadeIn 0.4s ease-in",
           overflowX: "hidden",
+          paddingBottom: bottomNavPadding,
         },
         card: {
           background: t.card,
@@ -844,12 +899,14 @@ ${libraryContext || "Библиотека пуста."}`;
           overflow: "hidden",
         },
         btn: (variant = "primary") => ({
-          padding: variant === "icon" ? "8px" : isLandscape ? "12px 20px" : "10px 16px",
+          padding: isMobile 
+            ? (isLandscape ? "12px 20px" : "10px 16px")
+            : "14px 28px",
           borderRadius: 8,
           border: "none",
           cursor: "pointer",
           fontWeight: 600,
-          fontSize: fontSize.sm,
+          fontSize: isMobile ? fontSize.sm : fontSize.md,
           display: "flex",
           alignItems: "center",
           gap: 6,
@@ -868,7 +925,7 @@ ${libraryContext || "Библиотека пуста."}`;
           background: t.card,
           border: `1px solid ${t.border}`,
           borderRadius: 8,
-          padding: isLandscape ? "12px 14px" : "10px 12px",
+          padding: isMobile ? "10px 12px" : "12px 16px",
           color: t.text,
           fontSize: fontSize.sm,
           outline: "none",
@@ -881,12 +938,12 @@ ${libraryContext || "Библиотека пуста."}`;
           background: t.card,
           border: `1px solid ${t.border}`,
           borderRadius: 8,
-          padding: isLandscape ? "12px 14px" : "10px 12px",
+          padding: isMobile ? "10px 12px" : "12px 16px",
           color: t.text,
           fontSize: fontSize.sm,
           outline: "none",
           resize: "vertical",
-          minHeight: isLandscape ? "200px" : "120px",
+          minHeight: isMobile ? "120px" : "200px",
           lineHeight: 1.6,
           boxSizing: "border-box",
           fontFamily: "inherit",
@@ -909,7 +966,7 @@ ${libraryContext || "Библиотека пуста."}`;
         },
         bubble: (isUser) => ({
           maxWidth: "82%",
-          padding: isLandscape ? "12px 16px" : "10px 14px",
+          padding: isMobile ? "10px 14px" : "12px 18px",
           borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
           background: isUser ? t.accent : t.card,
           color: isUser ? "#fff" : t.text,
@@ -923,7 +980,7 @@ ${libraryContext || "Библиотека пуста."}`;
         }),
         empty: {
           textAlign: "center",
-          padding: isLandscape ? "80px 40px" : "60px 20px",
+          padding: isMobile ? "60px 20px" : "80px 40px",
           color: t.textMuted,
         },
         categoryBadge: (color) => ({
@@ -956,18 +1013,58 @@ ${libraryContext || "Библиотека пуста."}`;
         modalContent: {
           background: t.card,
           borderRadius: 12,
-          padding: isLandscape ? "28px" : "20px",
+          padding: isMobile ? "20px" : "28px",
           width: "90%",
-          maxWidth: isLandscape ? "600px" : "400px",
+          maxWidth: isMobile ? "400px" : "600px",
           border: `1px solid ${t.border}`,
           animation: "slideUp 0.3s ease-out",
           maxHeight: "90vh",
           overflowY: "auto",
         },
+        bottomNav: {
+          position: "fixed",
+          bottom: 0,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: maxWidth,
+          background: t.surface,
+          borderTop: `2px solid ${t.border}`,
+          display: "flex",
+          padding: isMobile ? "8px 0" : "12px 0",
+          justifyContent: "space-around",
+          zIndex: 10,
+          transition: "background 0.3s, border-color 0.3s",
+          backdropFilter: "blur(10px)",
+        },
+        navButton: (active) => ({
+          flex: "1",
+          padding: isMobile ? "8px 4px" : "12px 8px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 2,
+          background: "none",
+          border: "none",
+          color: active ? t.accent : t.textMuted,
+          fontSize: isMobile ? 10 : 12,
+          fontWeight: active ? 700 : 500,
+          cursor: "pointer",
+          transition: "all 0.3s",
+          position: "relative",
+          borderTop: active ? `3px solid ${t.accent}` : "3px solid transparent",
+        }),
+        navIcon: {
+          fontSize: isMobile ? 20 : 24,
+        },
+        navLabel: {
+          fontSize: isMobile ? 9 : 11,
+          marginTop: 2,
+        },
       };
     },
-    [t, theme, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding]
-  ); // ← ВАЖНО! Точка с запятой здесь!
+    [t, theme, isMobile, isTablet, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding, bottomNavPadding]
+  );
 
   const SaveIndicator = () => {
     if (saveStatus === 'idle' && !draftExists) return null;
@@ -986,7 +1083,7 @@ ${libraryContext || "Библиотека пуста."}`;
     return (
       <div style={{
         position: 'fixed',
-        bottom: 20,
+        bottom: isMobile ? 80 : 100,
         right: 20,
         padding: '8px 16px',
         borderRadius: 8,
@@ -1019,7 +1116,7 @@ ${libraryContext || "Библиотека пуста."}`;
         s={s}
         icons={icons}
         Icon={Icon}
-        isLandscape={isLandscape}
+        isTablet={isTablet}
       />
     );
 
@@ -1037,48 +1134,16 @@ ${libraryContext || "Библиотека пуста."}`;
         s={s}
         icons={icons}
         Icon={Icon}
-        isLandscape={isLandscape}
+        isTablet={isTablet}
       />
     );
 
   return (
     <div>
-      {draftExists && (
-        <div style={{
-          padding: '12px 16px',
-          background: `${t.accent}22`,
-          borderRadius: 8,
-          marginBottom: 12,
-          border: `1px solid ${t.accent}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}>
-          <span style={{ fontSize: 14 }}>
-            📝 У вас есть несохраненный черновик
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              style={s.btn("primary")}
-              onClick={restoreDraft}
-            >
-              Восстановить
-            </button>
-            <button
-              style={s.btn("ghost")}
-              onClick={discardDraft}
-            >
-              Удалить
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* Категории - ВВЕРХУ */}
       <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${t.border}` }}>
         <div style={{ ...s.row, marginBottom: 12, justifyContent: "space-between" }}>
-          <div style={{ fontSize: s.label.fontSize, fontWeight: 600, color: t.textMuted }}>КАТЕГОРИИ</div>
+          <div style={{ fontSize: s.label.fontSize, fontWeight: 600, color: t.textMuted }}>📂 КАТЕГОРИИ</div>
           <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(true)}>
             <Icon d={icons.plus} size={14} />
           </button>
@@ -1147,6 +1212,41 @@ ${libraryContext || "Библиотека пуста."}`;
         </div>
       </div>
 
+      {/* Черновик баннер */}
+      {draftExists && (
+        <div style={{
+          padding: '12px 16px',
+          background: `${t.accent}22`,
+          borderRadius: 8,
+          marginBottom: 12,
+          border: `1px solid ${t.accent}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
+          <span style={{ fontSize: 14 }}>
+            📝 У вас есть несохраненный черновик
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={s.btn("primary")}
+              onClick={restoreDraft}
+            >
+              Восстановить
+            </button>
+            <button
+              style={s.btn("ghost")}
+              onClick={discardDraft}
+            >
+              Удалить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Поиск */}
       <div style={{ ...s.row, marginBottom: 12, gap: 12 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <span
@@ -1169,10 +1269,11 @@ ${libraryContext || "Библиотека пуста."}`;
         </div>
         <button style={s.btn("primary")} onClick={newNote}>
           <Icon d={icons.plus} size={16} />
-          {!isLandscape && "Новая"}
+          {!isMobile && "Новая"}
         </button>
       </div>
 
+      {/* Список заметок */}
       {filtered.length === 0 ? (
         <div style={s.empty}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
@@ -1182,7 +1283,11 @@ ${libraryContext || "Библиотека пуста."}`;
           </div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: isLandscape ? "repeat(auto-fill, minmax(300px, 1fr))" : "1fr", gap: 12 }}>
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+          gap: isTablet ? 16 : 12 
+        }}>
           {filtered.map((note) => {
             const cat = data.categories.find((c) => c.id === note.categoryId);
             return (
@@ -1230,7 +1335,7 @@ ${libraryContext || "Библиотека пуста."}`;
 };
 
 const renderAI = () => (
-  <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - " + (isLandscape ? "116px" : "108px") + ")" }}>
+  <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - " + (isMobile ? "180px" : "200px") + ")" }}>
     <div
       style={{
         flex: 1,
@@ -1277,6 +1382,7 @@ const renderAI = () => (
         value={chatInput}
         onChange={(e) => setChatInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && sendChat()}
+        disabled={chatLoading}
       />
       <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
         <Icon d={icons.send} size={16} />
@@ -1295,10 +1401,21 @@ const renderAI = () => (
 );
 
 const renderLibrary = () => {
-  const filteredLibrary = data.library.filter((item) =>
-    item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-    item.content.toLowerCase().includes(librarySearch.toLowerCase())
-  );
+  // Используем useMemo для фильтрации
+  const filteredLibrary = useMemo(() => {
+    return data.library.filter((item) =>
+      item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      item.content.toLowerCase().includes(librarySearch.toLowerCase())
+    );
+  }, [data.library, librarySearch]);
+
+  const handleAddToLibrary = () => {
+    if (libName.trim() && libContent.trim()) {
+      addToLibrary(libName, libContent, "file");
+      setLibName("");
+      setLibContent("");
+    }
+  };
 
   return (
     <div>
@@ -1308,29 +1425,23 @@ const renderLibrary = () => {
             type="text"
             style={{ ...s.input, flex: 1 }}
             placeholder="Название файла..."
-            id="libName"
+            value={libName}
+            onChange={(e) => setLibName(e.target.value)}
           />
           <button
             style={s.btn("primary")}
-            onClick={() => {
-              const name = document.getElementById("libName").value;
-              const content = document.getElementById("libContent").value;
-              if (name.trim() && content.trim()) {
-                addToLibrary(name, content, "file");
-                document.getElementById("libName").value = "";
-                document.getElementById("libContent").value = "";
-              }
-            }}
+            onClick={handleAddToLibrary}
           >
             <Icon d={icons.upload} size={16} />
-            {!isLandscape && "Добавить"}
+            {!isMobile && "Добавить"}
           </button>
         </div>
         <textarea
-          id="libContent"
           style={{ ...s.textarea, marginBottom: 12 }}
           placeholder="Вставьте содержимое..."
-          rows={isLandscape ? 6 : 4}
+          rows={isTablet ? 6 : 4}
+          value={libContent}
+          onChange={(e) => setLibContent(e.target.value)}
         />
       </div>
 
@@ -1363,7 +1474,11 @@ const renderLibrary = () => {
           <div style={{ fontSize: 13 }}>Добавьте файлы для анализа</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: isLandscape ? "repeat(auto-fill, minmax(320px, 1fr))" : "1fr", gap: 12 }}>
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+          gap: isTablet ? 16 : 12 
+        }}>
           {filteredLibrary.map((item) => (
             <div key={item.id} style={s.card}>
               <div style={{ ...s.row, justifyContent: "space-between", marginBottom: 8 }}>
@@ -1401,15 +1516,22 @@ const renderLibrary = () => {
     </div>
   );
 };
-    const headerTitle =
-    tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ" : tab === "library" ? "📚 Библиотека" : "📋 Тесты";
-
-  const tabs = [
+    const tabs = [
     { id: "notes", label: "Заметки", icon: icons.note },
     { id: "ai", label: "ИИ", icon: icons.ai },
     { id: "library", label: "Библиотека", icon: icons.library },
     { id: "quiz", label: "Тесты", icon: icons.quiz },
   ];
+
+  const getTabLabel = (id) => {
+    if (id === "notes") return "Заметки";
+    if (id === "ai") return "ИИ";
+    if (id === "library") return "Библиотека";
+    return "Тесты";
+  };
+
+  const headerTitle =
+    tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ" : tab === "library" ? "📚 Библиотека" : "📋 Тесты";
 
   return (
     <div style={s.app}>
@@ -1470,12 +1592,14 @@ const renderLibrary = () => {
         }
       `}</style>
 
+      {/* Шапка */}
       <div style={s.header}>
-        {(view !== "list" || (tab !== "ai" && tab !== "quiz" && tab !== "library")) && (
+        {(view !== "list" || tab !== "notes") && (
           <button
             style={s.btn("ghost")}
             onClick={() => {
               setView("list");
+              setTab("notes");
             }}
           >
             <Icon d={icons.back} size={18} />
@@ -1487,15 +1611,7 @@ const renderLibrary = () => {
         </button>
       </div>
 
-      <div style={s.tabsContainer}>
-        {tabs.map((t) => (
-          <button key={t.id} style={s.tabButton(tab === t.id)} onClick={() => setTab(t.id)}>
-            <Icon d={t.icon} size={16} />
-            {!isLandscape && t.label}
-          </button>
-        ))}
-      </div>
-
+      {/* Контент */}
       <div style={s.content}>
         {tab === "notes" && renderNotes()}
         {tab === "ai" && renderAI()}
@@ -1503,6 +1619,28 @@ const renderLibrary = () => {
         {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
       </div>
 
+      {/* Нижняя навигация */}
+      {(view === "list" || tab !== "notes") && (
+        <div style={s.bottomNav}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              style={s.navButton(tab === t.id)}
+              onClick={() => {
+                setTab(t.id);
+                if (t.id === "notes") setView("list");
+              }}
+            >
+              <div style={s.navIcon}>
+                <Icon d={t.icon} size={isMobile ? 20 : 24} />
+              </div>
+              <div style={s.navLabel}>{getTabLabel(t.id)}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Модальные окна */}
       {showCategoryModal && (
         <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
           <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
