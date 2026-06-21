@@ -89,13 +89,11 @@ function clearDraft() {
 async function askAI(messages, systemPrompt) {
   const userMessage = messages[messages.length - 1]?.content || "";
 
-  // Проверяем доступность Ollama
   try {
     const response = await fetch('http://localhost:11434/api/tags', {
       signal: AbortSignal.timeout(2000)
     });
     if (response.ok) {
-      // Используем Ollama
       const chatResponse = await fetch('http://localhost:11434/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,11 +112,8 @@ async function askAI(messages, systemPrompt) {
         return data.message.content;
       }
     }
-  } catch (_) {
-    // Если Ollama недоступна, используем fallback
-  }
+  } catch (_) {}
 
-  // Fallback ответы
   const responses = {
     "создай": "✅ Заметка создана! Вы можете начать писать содержимое.",
     "удали": "✅ Заметка удалена. Подтвердите удаление в диалоговом окне.",
@@ -198,10 +193,8 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
 
   const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
 
-  // Исправлено: убрана неиспользуемая переменная updatedNote
   useEffect(() => {
-    // Следим за изменениями для автосохранения
-    // Родительский компонент сам решает когда сохранять
+    // Следим за изменениями
   }, [title, body, tags, categoryId]);
 
   return (
@@ -292,7 +285,7 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
       </div>
     </div>
   );
-                }
+}
 // ─── Note Detail
 // ────────────────────────────────────────────────────────
 
@@ -420,7 +413,6 @@ export default function SmartNotesApp() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [librarySearch, setLibrarySearch] = useState("");
   const [orientation, setOrientation] = useState(window.innerWidth > window.innerHeight ? "landscape" : "portrait");
-  // Исправлено: удалена неиспользуемая переменная isMobile
   const chatRef = useRef(null);
 
   const [saveStatus, setSaveStatus] = useState('idle');
@@ -446,7 +438,6 @@ export default function SmartNotesApp() {
     }
   }, []);
 
-  // Исправлено: добавлены все зависимости
   useEffect(() => {
     if (view === 'edit' && activeNote) {
       if (saveTimer) clearTimeout(saveTimer);
@@ -536,7 +527,8 @@ export default function SmartNotesApp() {
     setDraftExists(false);
     showNotification('🗑️ Черновик удален');
   };
-    const showNotification = (message) => {
+
+  const showNotification = (message) => {
     const notification = document.createElement('div');
     notification.style.cssText = `
       position: fixed;
@@ -563,8 +555,7 @@ export default function SmartNotesApp() {
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   };
-
-  useEffect(() => {
+    useEffect(() => {
     const handleOrientationChange = () => {
       const isLandscape = window.innerWidth > window.innerHeight;
       setOrientation(isLandscape ? "landscape" : "portrait");
@@ -738,243 +729,245 @@ ${libraryContext || "Библиотека пуста."}`;
   const headerPadding = isLandscape ? "16px 24px 12px" : "20px 16px 12px";
   const cardPadding = isLandscape ? "20px" : "16px";
 
-  // Исправлено: добавлены все зависимости
+  // ⚠️ ВАЖНО: fontSize ПЕРЕМЕЩЕН ВНУТРЬ useMemo
   const s = useMemo(
     () => {
       const fontSize = {
-    xs: isLandscape ? 11 : 10,
-    sm: isLandscape ? 14 : 13,
-    md: isLandscape ? 16 : 15,
-    lg: isLandscape ? 20 : 18,
-    xl: isLandscape ? 24 : 20,
-  };
-  return {
-      app: {
-        minHeight: "100vh",
-        background: t.bg,
-        color: t.text,
-        fontFamily:
-          '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
-        display: "flex",
-        flexDirection: "column",
-        maxWidth: maxWidth,
-        margin: "0 auto",
-        position: "relative",
-        transition: "background 0.3s, color 0.3s",
-        width: "100%",
-        height: "100vh",
-        overflow: "hidden",
-      },
-      header: {
-        padding: headerPadding,
-        borderBottom: `1px solid ${t.border}`,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        background: t.surface,
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-        transition: "background 0.3s, border-color 0.3s",
-        minHeight: isLandscape ? "60px" : "56px",
-      },
-      headerTitle: {
-        fontSize: fontSize.lg,
-        fontWeight: 700,
-        letterSpacing: "-0.3px",
-        flex: 1,
-        color: theme === "dark" ? "transparent" : t.accent,
-        background: theme === "dark" ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})` : "none",
-        WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
-        WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
-      },
-      tabsContainer: {
-        display: "flex",
-        background: t.surface,
-        borderBottom: `2px solid ${t.border}`,
-        position: "sticky",
-        top: isLandscape ? "60px" : "56px",
-        zIndex: 9,
-        overflowX: "auto",
-        padding: "0 8px",
-        minHeight: isLandscape ? "56px" : "52px",
-        scrollBehavior: "smooth",
-      },
-      tabButton: (active) => ({
-        flex: "0 0 auto",
-        padding: isLandscape ? "12px 20px" : "12px 16px",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        background: "none",
-        border: "none",
-        borderBottom: active ? `3px solid ${t.accent}` : "3px solid transparent",
-        color: active ? t.accent : t.textMuted,
-        fontSize: fontSize.sm,
-        fontWeight: active ? 700 : 500,
-        cursor: "pointer",
-        transition: "all 0.3s",
-        whiteSpace: "nowrap",
-      }),
-      nav: {
-        display: "none",
-      },
-      content: {
-        flex: 1,
-        padding: contentPadding,
-        overflowY: "auto",
-        animation: "fadeIn 0.4s ease-in",
-        overflowX: "hidden",
-      },
-      card: {
-        background: t.card,
-        borderRadius: 12,
-        padding: cardPadding,
-        marginBottom: 12,
-        border: `1px solid ${t.border}`,
-        cursor: "pointer",
-        transition: "all 0.3s",
-        animation: "slideUp 0.4s ease-out",
-      },
-      cardTitle: {
-        fontSize: fontSize.md,
-        fontWeight: 600,
-        marginBottom: 6,
-        color: t.text,
-      },
-      cardText: {
-        fontSize: fontSize.sm,
-        color: t.textMuted,
-        lineHeight: 1.5,
-        display: "-webkit-box",
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
-      },
-      btn: (variant = "primary") => ({
-        padding: variant === "icon" ? "8px" : isLandscape ? "12px 20px" : "10px 16px",
-        borderRadius: 8,
-        border: "none",
-        cursor: "pointer",
-        fontWeight: 600,
-        fontSize: fontSize.sm,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        transition: "all 0.2s",
-        fontFamily: "inherit",
-        ...(variant === "primary"
-          ? { background: t.accent, color: "#fff" }
-          : variant === "danger"
-          ? { background: `${t.danger}22`, color: t.danger }
-          : variant === "ghost"
-          ? { background: "transparent", color: t.textMuted }
-          : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
-      }),
-      input: {
-        width: "100%",
-        background: t.card,
-        border: `1px solid ${t.border}`,
-        borderRadius: 8,
-        padding: isLandscape ? "12px 14px" : "10px 12px",
-        color: t.text,
-        fontSize: fontSize.sm,
-        outline: "none",
-        boxSizing: "border-box",
-        fontFamily: "inherit",
-        transition: "border-color 0.2s",
-      },
-      textarea: {
-        width: "100%",
-        background: t.card,
-        border: `1px solid ${t.border}`,
-        borderRadius: 8,
-        padding: isLandscape ? "12px 14px" : "10px 12px",
-        color: t.text,
-        fontSize: fontSize.sm,
-        outline: "none",
-        resize: "vertical",
-        minHeight: isLandscape ? "200px" : "120px",
-        lineHeight: 1.6,
-        boxSizing: "border-box",
-        fontFamily: "inherit",
-        transition: "border-color 0.2s",
-      },
-      label: {
-        fontSize: fontSize.xs,
-        color: t.textMuted,
-        marginBottom: 6,
-        display: "block",
-        fontWeight: 500,
-      },
-      row: {
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-      },
-      section: {
-        marginBottom: 20,
-      },
-      bubble: (isUser) => ({
-        maxWidth: "82%",
-        padding: isLandscape ? "12px 16px" : "10px 14px",
-        borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-        background: isUser ? t.accent : t.card,
-        color: isUser ? "#fff" : t.text,
-        fontSize: fontSize.sm,
-        lineHeight: 1.5,
-        border: isUser ? "none" : `1px solid ${t.border}`,
-        alignSelf: isUser ? "flex-end" : "flex-start",
-        whiteSpace: "pre-wrap",
-        animation: "fadeIn 0.3s ease-in",
-        wordBreak: "break-word",
-      }),
-      empty: {
-        textAlign: "center",
-        padding: isLandscape ? "80px 40px" : "60px 20px",
-        color: t.textMuted,
-      },
-      categoryBadge: (color) => ({
-        display: "inline-block",
-        background: `${color}33`,
-        color: color,
-        borderRadius: 6,
-        padding: "4px 10px",
-        fontSize: fontSize.xs,
-        fontWeight: 500,
-        marginRight: 6,
-        marginBottom: 8,
-        cursor: "pointer",
-        border: `1px solid ${color}66`,
-      }),
-      modal: {
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 999,
-        animation: "fadeIn 0.2s ease-out",
-        padding: "20px",
-      },
-      modalContent: {
-        background: t.card,
-        borderRadius: 12,
-        padding: isLandscape ? "28px" : "20px",
-        width: "90%",
-        maxWidth: isLandscape ? "600px" : "400px",
-        border: `1px solid ${t.border}`,
-        animation: "slideUp 0.3s ease-out",
-        maxHeight: "90vh",
-        overflowY: "auto",
-      },
-    }),
+        xs: isLandscape ? 11 : 10,
+        sm: isLandscape ? 14 : 13,
+        md: isLandscape ? 16 : 15,
+        lg: isLandscape ? 20 : 18,
+        xl: isLandscape ? 24 : 20,
+      };
+
+      return {
+        app: {
+          minHeight: "100vh",
+          background: t.bg,
+          color: t.text,
+          fontFamily:
+            '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
+          display: "flex",
+          flexDirection: "column",
+          maxWidth: maxWidth,
+          margin: "0 auto",
+          position: "relative",
+          transition: "background 0.3s, color 0.3s",
+          width: "100%",
+          height: "100vh",
+          overflow: "hidden",
+        },
+        header: {
+          padding: headerPadding,
+          borderBottom: `1px solid ${t.border}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          background: t.surface,
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          transition: "background 0.3s, border-color 0.3s",
+          minHeight: isLandscape ? "60px" : "56px",
+        },
+        headerTitle: {
+          fontSize: fontSize.lg,
+          fontWeight: 700,
+          letterSpacing: "-0.3px",
+          flex: 1,
+          color: theme === "dark" ? "transparent" : t.accent,
+          background: theme === "dark" ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})` : "none",
+          WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
+          WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
+        },
+        tabsContainer: {
+          display: "flex",
+          background: t.surface,
+          borderBottom: `2px solid ${t.border}`,
+          position: "sticky",
+          top: isLandscape ? "60px" : "56px",
+          zIndex: 9,
+          overflowX: "auto",
+          padding: "0 8px",
+          minHeight: isLandscape ? "56px" : "52px",
+          scrollBehavior: "smooth",
+        },
+        tabButton: (active) => ({
+          flex: "0 0 auto",
+          padding: isLandscape ? "12px 20px" : "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          background: "none",
+          border: "none",
+          borderBottom: active ? `3px solid ${t.accent}` : "3px solid transparent",
+          color: active ? t.accent : t.textMuted,
+          fontSize: fontSize.sm,
+          fontWeight: active ? 700 : 500,
+          cursor: "pointer",
+          transition: "all 0.3s",
+          whiteSpace: "nowrap",
+        }),
+        nav: {
+          display: "none",
+        },
+        content: {
+          flex: 1,
+          padding: contentPadding,
+          overflowY: "auto",
+          animation: "fadeIn 0.4s ease-in",
+          overflowX: "hidden",
+        },
+        card: {
+          background: t.card,
+          borderRadius: 12,
+          padding: cardPadding,
+          marginBottom: 12,
+          border: `1px solid ${t.border}`,
+          cursor: "pointer",
+          transition: "all 0.3s",
+          animation: "slideUp 0.4s ease-out",
+        },
+        cardTitle: {
+          fontSize: fontSize.md,
+          fontWeight: 600,
+          marginBottom: 6,
+          color: t.text,
+        },
+        cardText: {
+          fontSize: fontSize.sm,
+          color: t.textMuted,
+          lineHeight: 1.5,
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        },
+        btn: (variant = "primary") => ({
+          padding: variant === "icon" ? "8px" : isLandscape ? "12px 20px" : "10px 16px",
+          borderRadius: 8,
+          border: "none",
+          cursor: "pointer",
+          fontWeight: 600,
+          fontSize: fontSize.sm,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          transition: "all 0.2s",
+          fontFamily: "inherit",
+          ...(variant === "primary"
+            ? { background: t.accent, color: "#fff" }
+            : variant === "danger"
+            ? { background: `${t.danger}22`, color: t.danger }
+            : variant === "ghost"
+            ? { background: "transparent", color: t.textMuted }
+            : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
+        }),
+        input: {
+          width: "100%",
+          background: t.card,
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: isLandscape ? "12px 14px" : "10px 12px",
+          color: t.text,
+          fontSize: fontSize.sm,
+          outline: "none",
+          boxSizing: "border-box",
+          fontFamily: "inherit",
+          transition: "border-color 0.2s",
+        },
+        textarea: {
+          width: "100%",
+          background: t.card,
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: isLandscape ? "12px 14px" : "10px 12px",
+          color: t.text,
+          fontSize: fontSize.sm,
+          outline: "none",
+          resize: "vertical",
+          minHeight: isLandscape ? "200px" : "120px",
+          lineHeight: 1.6,
+          boxSizing: "border-box",
+          fontFamily: "inherit",
+          transition: "border-color 0.2s",
+        },
+        label: {
+          fontSize: fontSize.xs,
+          color: t.textMuted,
+          marginBottom: 6,
+          display: "block",
+          fontWeight: 500,
+        },
+        row: {
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+        },
+        section: {
+          marginBottom: 20,
+        },
+        bubble: (isUser) => ({
+          maxWidth: "82%",
+          padding: isLandscape ? "12px 16px" : "10px 14px",
+          borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+          background: isUser ? t.accent : t.card,
+          color: isUser ? "#fff" : t.text,
+          fontSize: fontSize.sm,
+          lineHeight: 1.5,
+          border: isUser ? "none" : `1px solid ${t.border}`,
+          alignSelf: isUser ? "flex-end" : "flex-start",
+          whiteSpace: "pre-wrap",
+          animation: "fadeIn 0.3s ease-in",
+          wordBreak: "break-word",
+        }),
+        empty: {
+          textAlign: "center",
+          padding: isLandscape ? "80px 40px" : "60px 20px",
+          color: t.textMuted,
+        },
+        categoryBadge: (color) => ({
+          display: "inline-block",
+          background: `${color}33`,
+          color: color,
+          borderRadius: 6,
+          padding: "4px 10px",
+          fontSize: fontSize.xs,
+          fontWeight: 500,
+          marginRight: 6,
+          marginBottom: 8,
+          cursor: "pointer",
+          border: `1px solid ${color}66`,
+        }),
+        modal: {
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 999,
+          animation: "fadeIn 0.2s ease-out",
+          padding: "20px",
+        },
+        modalContent: {
+          background: t.card,
+          borderRadius: 12,
+          padding: isLandscape ? "28px" : "20px",
+          width: "90%",
+          maxWidth: isLandscape ? "600px" : "400px",
+          border: `1px solid ${t.border}`,
+          animation: "slideUp 0.3s ease-out",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        },
+      };
+    },
     [t, theme, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding]
-  );
+  ); // ← ВАЖНО! Точка с запятой здесь!
 
   const SaveIndicator = () => {
     if (saveStatus === 'idle' && !draftExists) return null;
