@@ -1472,6 +1472,70 @@ const renderLibrary = () => {
           <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Библиотека пуста</div>
           <div style={{ fontSize: 13 }}>Добавьте файлы для анализа</div>
+const renderLibrary = () => {
+  const handleAddToLibrary = () => {
+    if (libName.trim() && libContent.trim()) {
+      addToLibrary(libName, libContent, "file");
+      setLibName("");
+      setLibContent("");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${t.border}` }}>
+        <div style={{ ...s.row, marginBottom: 12, gap: 8 }}>
+          <input
+            type="text"
+            style={{ ...s.input, flex: 1 }}
+            placeholder="Название файла..."
+            value={libName}
+            onChange={(e) => setLibName(e.target.value)}
+          />
+          <button
+            style={s.btn("primary")}
+            onClick={handleAddToLibrary}
+          >
+            <Icon d={icons.upload} size={16} />
+            {!isMobile && "Добавить"}
+          </button>
+        </div>
+        <textarea
+          style={{ ...s.textarea, marginBottom: 12 }}
+          placeholder="Вставьте содержимое..."
+          rows={isTablet ? 6 : 4}
+          value={libContent}
+          onChange={(e) => setLibContent(e.target.value)}
+        />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ position: "relative" }}>
+          <span
+            style={{
+              position: "absolute",
+              left: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: t.textMuted,
+            }}
+          >
+            <Icon d={icons.search} size={16} />
+          </span>
+          <input
+            style={{ ...s.input, paddingLeft: 34 }}
+            placeholder="Поиск..."
+            value={librarySearch}
+            onChange={(e) => setLibrarySearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {filteredLibrary.length === 0 ? (
+        <div style={s.empty}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Библиотека пуста</div>
+          <div style={{ fontSize: 13 }}>Добавьте файлы для анализа</div>
         </div>
       ) : (
         <div style={{ 
