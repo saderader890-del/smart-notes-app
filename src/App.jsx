@@ -1693,4 +1693,31 @@ const SaveIndicator = () => {
 
       {showDeleteConfirm && (
         <div style={s.modal} onClick={() => setShowDeleteConfirm(null)}>
-          <div style={s.modalContent} onClick={(e) => e.stopPropagatio
+          <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={{ ...s.cardTitle, marginBottom: 16, color: t.danger }}>⚠️ Подтвердите удаление</div>
+            <div style={{ marginBottom: 20, fontSize: 14, color: t.text }}>
+              Вы уверены, что хотите удалить заметку <strong>"{activeNote?.title || "Без названия"}"</strong>?
+              <br />
+              <span style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>Это действие нельзя отменить.</span>
+            </div>
+            <div style={{ ...s.row, justifyContent: "flex-end", gap: 8 }}>
+              <button style={s.btn("ghost")} onClick={() => setShowDeleteConfirm(null)}>
+                Отмена
+              </button>
+              <button
+                style={s.btn("danger")}
+                onClick={() => {
+                  deleteNote(showDeleteConfirm);
+                }}
+              >
+                <Icon d={icons.trash} size={16} /> Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SaveIndicator />
+    </div>
+  );
+}
