@@ -737,17 +737,18 @@ ${libraryContext || "Библиотека пуста."}`;
   const contentPadding = isLandscape ? "24px" : "16px";
   const headerPadding = isLandscape ? "16px 24px 12px" : "20px 16px 12px";
   const cardPadding = isLandscape ? "20px" : "16px";
-  const fontSize = {
+
+  // Исправлено: добавлены все зависимости
+  const s = useMemo(
+    () => {
+      const fontSize = {
     xs: isLandscape ? 11 : 10,
     sm: isLandscape ? 14 : 13,
     md: isLandscape ? 16 : 15,
     lg: isLandscape ? 20 : 18,
     xl: isLandscape ? 24 : 20,
   };
-
-  // Исправлено: добавлены все зависимости
-  const s = useMemo(
-    () => ({
+  return {
       app: {
         minHeight: "100vh",
         background: t.bg,
@@ -972,7 +973,7 @@ ${libraryContext || "Библиотека пуста."}`;
         overflowY: "auto",
       },
     }),
-    [t, theme, isLandscape, fontSize, maxWidth, headerPadding, contentPadding, cardPadding]
+    [t, theme, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding]
   );
 
   const SaveIndicator = () => {
