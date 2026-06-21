@@ -210,9 +210,9 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
 
   // Автосохранение в черновик при изменениях
   useEffect(() => {
-    const draftNote = { ...note, title, body, tags, categoryId };
-    saveDraft(draftNote);
-  }, [title, body, tags, categoryId]);
+  const draftNote = { ...note, title, body, tags, categoryId };
+  saveDraft(draftNote);
+}, [title, body, tags, categoryId, note]); 
 
   return (
     <div style={{ 
@@ -330,7 +330,6 @@ function NoteDetail({
   isTablet,
 }) {
   const [showSummary, setShowSummary] = useState(false);
-  const [scrollPosition, setScrollPosition] = useState(0);
   const contentRef = useRef(null);
   const cat = categories.find((c) => c.id === note.categoryId);
 
@@ -502,7 +501,6 @@ export default function SmartNotesApp() {
 
   const isMobile = windowWidth < 768;
   const isTablet = windowWidth >= 768 && windowWidth < 1024;
-  const isDesktop = windowWidth >= 1024;
   const isLandscape = windowWidth > windowHeight;
 
   // Отступы в зависимости от устройства
@@ -1070,7 +1068,7 @@ const s = useMemo(
       },
     };
   },
-  [t, theme, isMobile, isTablet, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding, bottomNavPadding]
+  [t, theme, isMobile, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding, bottomNavPadding]
 );
 
 const SaveIndicator = () => {
