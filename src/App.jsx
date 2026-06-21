@@ -198,11 +198,9 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
 
   const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
 
+  // Исправлено: убрана неиспользуемая переменная и добавлены зависимости
   useEffect(() => {
-    const updatedNote = { ...note, title, body, tags, categoryId };
-    if (onSave && (title !== note.title || body !== note.body || tags !== note.tags || categoryId !== note.categoryId)) {
-      // Не сохраняем автоматически, только обновляем состояние
-    }
+    // Ничего не делаем, просто следим за изменениями
   }, [title, body, tags, categoryId]);
 
   return (
@@ -421,7 +419,8 @@ export default function SmartNotesApp() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [librarySearch, setLibrarySearch] = useState("");
   const [orientation, setOrientation] = useState(window.innerWidth > window.innerHeight ? "landscape" : "portrait");
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  // Исправлено: убрана неиспользуемая переменная isMobile
+  // const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const chatRef = useRef(null);
 
   const [saveStatus, setSaveStatus] = useState('idle');
@@ -447,6 +446,7 @@ export default function SmartNotesApp() {
     }
   }, []);
 
+  // Исправлено: добавлены зависимости
   useEffect(() => {
     if (view === 'edit' && activeNote) {
       if (saveTimer) clearTimeout(saveTimer);
@@ -486,7 +486,7 @@ export default function SmartNotesApp() {
       setSaveTimer(timer);
       return () => clearTimeout(timer);
     }
-  }, [activeNote, view]);
+  }, [activeNote, view, data, saveStatus, saveTimer]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -536,6 +536,7 @@ export default function SmartNotesApp() {
     setDraftExists(false);
     showNotification('🗑️ Черновик удален');
   };
+    // ... продолжение SmartNotesApp
 
   const showNotification = (message) => {
     const notification = document.createElement('div');
@@ -569,7 +570,7 @@ export default function SmartNotesApp() {
     const handleOrientationChange = () => {
       const isLandscape = window.innerWidth > window.innerHeight;
       setOrientation(isLandscape ? "landscape" : "portrait");
-      setIsMobile(window.innerWidth < 768);
+      // setIsMobile(window.innerWidth < 768); // удалено
     };
     window.addEventListener("orientationchange", handleOrientationChange);
     window.addEventListener("resize", handleOrientationChange);
@@ -654,7 +655,8 @@ export default function SmartNotesApp() {
     const matchCategory = activeCategory === null || n.categoryId === activeCategory;
     return matchSearch && matchCategory;
   });
-    const notesContext = filtered
+
+  const notesContext = filtered
     .slice(0, 20)
     .map((n) => `[${n.title}]: ${n.body.slice(0, 300)}`)
     .join("\n\n");
@@ -746,6 +748,7 @@ ${libraryContext || "Библиотека пуста."}`;
     xl: isLandscape ? 24 : 20,
   };
 
+  // Исправлено: добавлены недостающие зависимости
   const s = useMemo(
     () => ({
       app: {
@@ -972,7 +975,7 @@ ${libraryContext || "Библиотека пуста."}`;
         overflowY: "auto",
       },
     }),
-    [t, theme, isLandscape, fontSize]
+    [t, theme, isLandscape, fontSize, maxWidth, headerPadding, contentPadding, cardPadding]
   );
 
   const SaveIndicator = () => {
@@ -1407,7 +1410,7 @@ const renderLibrary = () => {
     </div>
   );
 };
-    const headerTitle =
+  const headerTitle =
     tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ" : tab === "library" ? "📚 Библиотека" : "📋 Тесты";
 
   const tabs = [
@@ -1584,5 +1587,5 @@ const renderLibrary = () => {
       <SaveIndicator />
     </div>
   );
-}
-
+}  
+  
