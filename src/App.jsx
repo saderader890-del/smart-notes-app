@@ -88,7 +88,7 @@ function saveScrollPosition(noteId, position) {
 function loadScrollPosition(noteId) {
   try {
     const pos = localStorage.getItem(`${SCROLL_POSITION_KEY}_${noteId}`);
-    return pos ? parseInt(pos) : 0;
+    return pos ? parseInt(pos, 10) : 0;
   } catch (_) {}
   return 0;
 }
@@ -97,23 +97,30 @@ async function askAI(messages, systemPrompt) {
   const userMessage = messages[messages.length - 1]?.content || "";
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: "mistralai/mistral-7b-instruct:free",
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        max_tokens: 500,
-      }),
-      signal: AbortSignal.timeout(15000)
-    });
+    const body = {
+      model: "mistralai/mistral-7b-instruct:free",
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      max_tokens: 500,
+    };
 
-    if (response.ok) {
+    const fetchOptions = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    };
+
+    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+      fetchOptions.signal = AbortSignal.timeout(15000);
+    }
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", fetchOptions);
+
+    if (response && response.ok) {
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
+      return data.choices?.[0]?.message?.content || data.choices?.[0]?.text || "Извините, не удалось получить ответ.";
     }
   } catch (error) {
-    console.log('AI error:', error);
+    console.log("AI error:", error);
   }
 
   const fallbackResponses = {
@@ -135,8 +142,18 @@ async function askAI(messages, systemPrompt) {
 
   return `Спасибо за вопрос: "${userMessage}"\n\nЯ помогу вам организовать информацию.`;
 }
-const Icon = ({ d, size = 20, color = "currentColor" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+const Icon = ({ d, size = 20, color = "currentColor", ...rest }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...rest}
+  >
     <path d={d} />
   </svg>
 );
@@ -164,109 +181,132 @@ const icons = {
   settings: "M12 2c-5.33 4.55-8 8.48-8 14.8 0 5.64 2.05 7.2 8 7.2s8-1.56 8-7.2c0-6.32-2.67-10.25-8-14.8z",
   menu: "M3 12h18M3 6h18M3 18h18",
 };
-function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Icon, isTablet }) {
-  const [title, setTitle] = useState(note.title || '');
-  const [blocks, setBlocks] = useState(note.blocks || [{ text: '', background: null, link: null }]);
+
+function NoteEditor({
+  note,
+  categories,
+  onSave,
+  onCancel,
+  theme: t,
+  s,
+  icons,
+  Icon,
+  isTablet,
+}) {
+  const [title, setTitle] = useState(note.title || "");
+  const [blocks, setBlocks] = useState(
+    note.blocks || [{ text: "", background: null, link: null }]
+  );
   const [selectedColor, setSelectedColor] = useState(null);
-  const [linkUrl, setLinkUrl] = useState('');
+  const [linkUrl, setLinkUrl] = useState("");
   const [showLinkInput, setShowLinkInput] = useState(false);
-  const [tagInput, setTagInput] = useState('');
+  const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState(note.tags || []);
   const [categoryId, setCategoryId] = useState(note.categoryId || null);
   const textareaRef = useRef(null);
 
   const colors = [
-    { name: 'Красный', value: 'rgba(239, 68, 68, 0.3)' },
-    { name: 'Жёлтый', value: 'rgba(234, 179, 8, 0.3)' },
-    { name: 'Синий', value: 'rgba(59, 130, 246, 0.3)' },
-    { name: 'Оранжевый', value: 'rgba(249, 115, 22, 0.3)' },
-    { name: 'Зелёный', value: 'rgba(34, 197, 94, 0.3)' },
-    { name: 'Фиолетовый', value: 'rgba(168, 85, 247, 0.3)' },
+    { name: "Красный", value: "rgba(239, 68, 68, 0.3)" },
+    { name: "Жёлтый", value: "rgba(234, 179, 8, 0.3)" },
+    { name: "Синий", value: "rgba(59, 130, 246, 0.3)" },
+    { name: "Оранжевый", value: "rgba(249, 115, 22, 0.3)" },
+    { name: "Зелёный", value: "rgba(34, 197, 94, 0.3)" },
+    { name: "Фиолетовый", value: "rgba(168, 85, 247, 0.3)" },
   ];
 
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase();
-    if (tag && !tags.includes(tag)) setTags([...tags, tag]);
-    setTagInput('');
+    if (tag && !tags.includes(tag)) {
+      setTags([...tags, tag]);
+    }
+    setTagInput("");
   };
 
-  const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
-
+  const removeTag = (tag) => {
+    setTags(tags.filter((t) => t !== tag));
+  };
   const applyFormatting = (type, value) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    if (start === end) return;
+  const textarea = textareaRef.current;
+  if (!textarea) return;
 
-    const selectedText = textarea.value.substring(start, end);
-    const before = textarea.value.substring(0, start);
-    const after = textarea.value.substring(end);
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  if (start === end) return;
 
-    let charCount = 0;
-    let blockIndex = 0;
-    let startInBlock = 0;
-    let endInBlock = 0;
+  let charCount = 0;
+  let blockIndex = 0;
+  let startInBlock = 0;
+  let endInBlock = 0;
 
-    for (let i = 0; i < blocks.length; i++) {
-      const blockText = blocks[i].text;
-      if (charCount + blockText.length > start) {
-        blockIndex = i;
-        startInBlock = start - charCount;
-        endInBlock = end - charCount;
-        break;
-      }
-      charCount += blockText.length;
+  for (let i = 0; i < blocks.length; i++) {
+    const blockText = blocks[i].text;
+    if (charCount + blockText.length >= start) {
+      blockIndex = i;
+      startInBlock = start - charCount;
+      endInBlock = Math.min(blockText.length, end - charCount);
+      break;
     }
+    charCount += blockText.length;
+  }
 
-    const block = blocks[blockIndex];
-    if (startInBlock >= 0 && endInBlock <= block.text.length) {
-      const newBlocks = [...blocks];
-      const beforeText = block.text.substring(0, startInBlock);
-      const selectedTextPart = block.text.substring(startInBlock, endInBlock);
-      const afterText = block.text.substring(endInBlock);
+  const block = blocks[blockIndex];
+  if (!block) return;
 
-      const newBlock = {
-        text: selectedTextPart,
-        background: type === 'color' ? value : block.background,
-        link: type === 'link' ? value : block.link,
-      };
-
-      const updatedBlocks = [];
-      if (beforeText) {
-        updatedBlocks.push({ ...block, text: beforeText, link: null, background: null });
-      }
-      updatedBlocks.push(newBlock);
-      if (afterText) {
-        updatedBlocks.push({ ...block, text: afterText, link: null, background: null });
-      }
-
-      newBlocks.splice(blockIndex, 1, ...updatedBlocks);
-      setBlocks(newBlocks);
-    }
-
-    textarea.selectionStart = start + selectedText.length;
-    textarea.selectionEnd = start + selectedText.length;
-  };
-
-  const handleTextChange = (e) => {
-    const value = e.target.value;
+  if (startInBlock >= 0 && endInBlock <= block.text.length) {
     const newBlocks = [...blocks];
-    if (newBlocks.length > 0) {
-      newBlocks[newBlocks.length - 1].text = value;
-      setBlocks(newBlocks);
+    const beforeText = block.text.substring(0, startInBlock);
+    const selectedTextPart = block.text.substring(startInBlock, endInBlock);
+    const afterText = block.text.substring(endInBlock);
+
+    const newBlock = {
+      text: selectedTextPart,
+      background: type === "color" ? value : block.background,
+      link: type === "link" ? value : block.link,
+    };
+
+    const updatedBlocks = [];
+    if (beforeText) {
+      updatedBlocks.push({ ...block, text: beforeText, link: null, background: null });
     }
-  };
+    updatedBlocks.push(newBlock);
+    if (afterText) {
+      updatedBlocks.push({ ...block, text: afterText, link: null, background: null });
+    }
 
-  const getPlainText = () => blocks.map(b => b.text).join('');
+    newBlocks.splice(blockIndex, 1, ...updatedBlocks);
+    setBlocks(newBlocks);
 
-  useEffect(() => {
-    saveDraft({ ...note, title, blocks, tags, categoryId });
-  }, [title, blocks, tags, categoryId]);
+    setTimeout(() => {
+      try {
+        const newPos = start + selectedTextPart.length;
+        textarea.selectionStart = newPos;
+        textarea.selectionEnd = newPos;
+        textarea.focus();
+      } catch (_) {}
+    }, 0);
+  }
+};
 
-  return (
-    <div style={{ maxWidth: '100%', margin: '0 auto' }}>
+const handleTextChange = (e) => {
+  const value = e.target.value;
+  const newBlocks = [...blocks];
+  if (newBlocks.length > 0) {
+    newBlocks[newBlocks.length - 1] = { ...newBlocks[newBlocks.length - 1], text: value };
+    setBlocks(newBlocks);
+  } else {
+    setBlocks([{ text: value, background: null, link: null }]);
+  }
+};
+
+const getPlainText = () => {
+  return blocks.map((b) => b.text).join("");
+};
+
+useEffect(() => {
+  saveDraft({ ...note, title, blocks, tags, categoryId });
+}, [title, blocks, tags, categoryId, note]);
+    return (
+    <div style={{ maxWidth: "100%", margin: "0 auto" }}>
       <div>
         <div style={s.section}>
           <label style={s.label}>Название</label>
@@ -280,9 +320,11 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
         <div style={s.section}>
           <label style={s.label}>Категория</label>
           <select
-            style={{ ...s.input, cursor: 'pointer' }}
-            value={categoryId || ''}
-            onChange={(e) => setCategoryId(e.target.value ? parseInt(e.target.value) : null)}
+            style={{ ...s.input, cursor: "pointer" }}
+            value={categoryId || ""}
+            onChange={(e) =>
+              setCategoryId(e.target.value ? parseInt(e.target.value, 10) : null)
+            }
           >
             <option value="">Без категории</option>
             {categories.map((cat) => (
@@ -294,38 +336,77 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
         </div>
       </div>
 
-      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: t.textMuted, marginRight: 4 }}>Выделить цветом:</span>
+      <div
+        style={{
+          marginBottom: 12,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          alignItems: "center",
+        }}
+      >
+        <span style={{ fontSize: 12, color: t.textMuted, marginRight: 4 }}>
+          Выделить цветом:
+        </span>
         {colors.map((color) => (
           <button
             key={color.value}
             style={{
               width: 28,
               height: 28,
-              borderRadius: '50%',
+              borderRadius: "50%",
               background: color.value,
-              border: selectedColor === color.value ? '2px solid #fff' : '1px solid rgba(0,0,0,0.2)',
-              boxShadow: selectedColor === color.value ? '0 0 0 2px #000' : 'none',
-              cursor: 'pointer',
+              border: selectedColor === color.value
+                ? "2px solid #fff"
+                : "1px solid rgba(0,0,0,0.2)",
+              boxShadow: selectedColor === color.value
+                ? "0 0 0 2px #000"
+                : "none",
+              cursor: "pointer",
               opacity: 0.9,
             }}
             onClick={() => {
               setSelectedColor(color.value);
-              applyFormatting('color', color.value);
+              applyFormatting("color", color.value);
             }}
             title={color.name}
           />
         ))}
-        <button style={s.btn('secondary')} onClick={() => { setShowLinkInput(!showLinkInput); if (showLinkInput) setLinkUrl(''); }}>
+        <button
+          style={s.btn("secondary")}
+          onClick={() => {
+            setShowLinkInput(!showLinkInput);
+            if (showLinkInput) setLinkUrl("");
+          }}
+        >
           🔗 Ссылка
         </button>
-        <button style={s.btn('ghost')} onClick={() => setSelectedColor(null)}>✖ Сбросить</button>
+        <button
+          style={s.btn("ghost")}
+          onClick={() => setSelectedColor(null)}
+        >
+          ✖ Сбросить
+        </button>
       </div>
 
       {showLinkInput && (
         <div style={{ ...s.row, marginBottom: 12, gap: 8 }}>
-          <input style={{ ...s.input, flex: 1 }} placeholder="Введите URL..." value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
-          <button style={s.btn('primary')} onClick={() => { if (linkUrl.trim()) { applyFormatting('link', linkUrl.trim()); setLinkUrl(''); setShowLinkInput(false); } }}>
+          <input
+            style={{ ...s.input, flex: 1 }}
+            placeholder="Введите URL..."
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+          />
+          <button
+            style={s.btn("primary")}
+            onClick={() => {
+              if (linkUrl.trim()) {
+                applyFormatting("link", linkUrl.trim());
+                setLinkUrl("");
+                setShowLinkInput(false);
+              }
+            }}
+          >
             Применить
           </button>
         </div>
@@ -336,28 +417,28 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
         <div
           style={{
             ...s.textarea,
-            minHeight: isTablet ? '50vh' : '300px',
+            minHeight: isTablet ? "50vh" : "300px",
             fontSize: isTablet ? 18 : 16,
             lineHeight: 1.8,
-            whiteSpace: 'pre-wrap',
-            overflowY: 'auto',
+            whiteSpace: "pre-wrap",
+            overflowY: "auto",
             marginBottom: 8,
             background: t.card,
             border: `1px solid ${t.border}`,
             borderRadius: 8,
-            padding: '12px 14px',
+            padding: "12px 14px",
           }}
         >
           {blocks.map((block, index) => {
             let style = {};
             if (block.background) {
               style.background = block.background;
-              style.padding = '2px 4px';
+              style.padding = "2px 4px";
               style.borderRadius = 4;
             }
             if (block.link) {
-              style.textDecoration = 'underline';
-              style.cursor = 'pointer';
+              style.textDecoration = "underline";
+              style.cursor = "pointer";
               style.color = t.accent;
             }
             return (
@@ -371,7 +452,7 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
           ref={textareaRef}
           style={{
             ...s.textarea,
-            minHeight: isTablet ? '50vh' : '300px',
+            minHeight: isTablet ? "50vh" : "300px",
             fontSize: isTablet ? 18 : 16,
             lineHeight: 1.8,
             marginTop: 8,
@@ -386,27 +467,61 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, icons, Ic
       <div style={s.section}>
         <label style={s.label}>Теги</label>
         <div style={{ ...s.row, marginBottom: 8 }}>
-          <input style={{ ...s.input, flex: 1 }} placeholder="Добавить тег..." value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTag()} />
-          <button style={s.btn('secondary')} onClick={addTag}>+</button>
+          <input
+            style={{ ...s.input, flex: 1 }}
+            placeholder="Добавить тег..."
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addTag()}
+          />
+          <button style={s.btn("secondary")} onClick={addTag}>
+            +
+          </button>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {tags.map((tag) => (
-            <span key={tag} style={{ display: 'inline-block', background: `${t.accent}33`, color: t.accent, borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, cursor: 'pointer' }} onClick={() => removeTag(tag)}>
+            <span
+              key={tag}
+              style={{
+                display: "inline-block",
+                background: `${t.accent}33`,
+                color: t.accent,
+                borderRadius: 6,
+                padding: "4px 10px",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+              onClick={() => removeTag(tag)}
+            >
               {tag} ×
             </span>
           ))}
         </div>
       </div>
 
-      <div style={{ ...s.row, justifyContent: 'flex-end', gap: 8, paddingBottom: 20 }}>
-        <button style={s.btn('ghost')} onClick={onCancel}>Отмена</button>
-        <button style={s.btn('primary')} onClick={() => onSave({ ...note, title, blocks: blocks.filter(b => b.text.trim() !== ''), tags, categoryId })}>
+      <div style={{ ...s.row, justifyContent: "flex-end", gap: 8, paddingBottom: 20 }}>
+        <button style={s.btn("ghost")} onClick={onCancel}>
+          Отмена
+        </button>
+        <button
+          style={s.btn("primary")}
+          onClick={() =>
+            onSave({
+              ...note,
+              title,
+              blocks: blocks.filter((b) => b.text.trim() !== ""),
+              tags,
+              categoryId,
+            })
+          }
+        >
           ✓ Сохранить
         </button>
       </div>
     </div>
   );
-}
+          }
 function NoteDetail({
   note,
   categories,
@@ -423,12 +538,14 @@ function NoteDetail({
   isLandscape,
 }) {
   const [showSummary, setShowSummary] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const [searchMode, setSearchMode] = useState('text');
+  const [searchText, setSearchText] = useState("");
+  const [searchMode, setSearchMode] = useState("text");
   const [searchColor, setSearchColor] = useState(null);
   const contentRef = useRef(null);
   const cat = categories.find((c) => c.id === note.categoryId);
-  const blocks = note.blocks || [{ text: note.body || '', background: null, link: null }];
+  const blocks = note.blocks || [
+    { text: note.body || "", background: null, link: null },
+  ];
 
   useEffect(() => {
     if (contentRef.current) {
@@ -446,43 +563,55 @@ function NoteDetail({
 
   const highlightText = (text, search) => {
     if (!search) return text;
-    const parts = text.split(new RegExp(`(${search})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === search.toLowerCase() 
-        ? <mark key={i} style={{ background: '#ffeb3b', color: '#000' }}>{part}</mark> 
-        : part
+    const parts = text.split(new RegExp(`(${search})`, "gi"));
+    return parts.map((part, i) =>
+      part.toLowerCase() === search.toLowerCase() ? (
+        <mark key={i} style={{ background: "#ffeb3b", color: "#000" }}>
+          {part}
+        </mark>
+      ) : (
+        part
+      )
     );
   };
 
   const getFilteredBlocks = () => {
-    if (searchMode === 'color' && searchColor) {
-      return blocks.filter(b => b.background === searchColor);
+    if (searchMode === "color" && searchColor) {
+      return blocks.filter((b) => b.background === searchColor);
     }
-    if (searchMode === 'link') {
-      return blocks.filter(b => b.link);
+    if (searchMode === "link") {
+      return blocks.filter((b) => b.link);
     }
     return blocks;
   };
 
   const colors = [
-    { name: 'Красный', value: 'rgba(239, 68, 68, 0.3)' },
-    { name: 'Жёлтый', value: 'rgba(234, 179, 8, 0.3)' },
-    { name: 'Синий', value: 'rgba(59, 130, 246, 0.3)' },
-    { name: 'Оранжевый', value: 'rgba(249, 115, 22, 0.3)' },
-    { name: 'Зелёный', value: 'rgba(34, 197, 94, 0.3)' },
-    { name: 'Фиолетовый', value: 'rgba(168, 85, 247, 0.3)' },
+    { name: "Красный", value: "rgba(239, 68, 68, 0.3)" },
+    { name: "Жёлтый", value: "rgba(234, 179, 8, 0.3)" },
+    { name: "Синий", value: "rgba(59, 130, 246, 0.3)" },
+    { name: "Оранжевый", value: "rgba(249, 115, 22, 0.3)" },
+    { name: "Зелёный", value: "rgba(34, 197, 94, 0.3)" },
+    { name: "Фиолетовый", value: "rgba(168, 85, 247, 0.3)" },
   ];
 
   return (
-    <div style={{ 
-      display: isTablet && isLandscape ? "grid" : "block",
-      gridTemplateColumns: isTablet && isLandscape ? "1fr 1fr" : undefined,
-      gap: isTablet && isLandscape ? "24px" : undefined,
-      maxWidth: "100%",
-      margin: "0 auto",
-    }}>
-      <div ref={contentRef} onScroll={handleScroll} style={{ maxHeight: isTablet ? "70vh" : "auto", overflowY: "auto" }}>
-        <div style={{ ...s.row, justifyContent: "space-between", marginBottom: 16 }}>
+    <div
+      style={{
+        display: isTablet && isLandscape ? "grid" : "block",
+        gridTemplateColumns: isTablet && isLandscape ? "1fr 1fr" : undefined,
+        gap: isTablet && isLandscape ? "24px" : undefined,
+        maxWidth: "100%",
+        margin: "0 auto",
+      }}
+    >
+      <div
+        ref={contentRef}
+        onScroll={handleScroll}
+        style={{ maxHeight: isTablet ? "70vh" : "auto", overflowY: "auto" }}
+      >
+        <div
+          style={{ ...s.row, justifyContent: "space-between", marginBottom: 16 }}
+        >
           <div style={{ fontSize: 11, color: t.textMuted }}>
             {new Date(note.createdAt).toLocaleString("ru")}
           </div>
@@ -496,54 +625,99 @@ function NoteDetail({
           </div>
         </div>
         {cat && <span style={s.categoryBadge(cat.color)}>{cat.name}</span>}
-        <h2 style={{ fontSize: isTablet ? 24 : 20, fontWeight: 700, marginBottom: 12, color: t.text }}>
+        <h2
+          style={{
+            fontSize: isTablet ? 24 : 20,
+            fontWeight: 700,
+            marginBottom: 12,
+            color: t.text,
+          }}
+        >
           {note.title || "Без названия"}
         </h2>
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <button 
-              style={{ ...s.btn('secondary'), background: searchMode === 'text' ? t.accent : 'transparent', color: searchMode === 'text' ? '#fff' : t.text }}
-              onClick={() => { setSearchMode('text'); setSearchColor(null); }}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              style={{
+                ...s.btn("secondary"),
+                background: searchMode === "text" ? t.accent : "transparent",
+                color: searchMode === "text" ? "#fff" : t.text,
+              }}
+              onClick={() => {
+                setSearchMode("text");
+                setSearchColor(null);
+              }}
             >
               📝 По тексту
             </button>
-            <button 
-              style={{ ...s.btn('secondary'), background: searchMode === 'color' ? t.accent : 'transparent', color: searchMode === 'color' ? '#fff' : t.text }}
-              onClick={() => { setSearchMode('color'); }}
+            <button
+              style={{
+                ...s.btn("secondary"),
+                background: searchMode === "color" ? t.accent : "transparent",
+                color: searchMode === "color" ? "#fff" : t.text,
+              }}
+              onClick={() => {
+                setSearchMode("color");
+              }}
             >
               🎨 По цвету
             </button>
-            <button 
-              style={{ ...s.btn('secondary'), background: searchMode === 'link' ? t.accent : 'transparent', color: searchMode === 'link' ? '#fff' : t.text }}
-              onClick={() => { setSearchMode('link'); setSearchColor(null); }}
+            <button
+              style={{
+                ...s.btn("secondary"),
+                background: searchMode === "link" ? t.accent : "transparent",
+                color: searchMode === "link" ? "#fff" : t.text,
+              }}
+              onClick={() => {
+                setSearchMode("link");
+                setSearchColor(null);
+              }}
             >
               🔗 По ссылкам
             </button>
           </div>
 
-          {searchMode === 'color' && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {searchMode === "color" && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {colors.map((color) => (
                 <button
                   key={color.value}
                   style={{
                     width: 32,
                     height: 32,
-                    borderRadius: '50%',
+                    borderRadius: "50%",
                     background: color.value,
-                    border: searchColor === color.value ? '3px solid #fff' : '1px solid rgba(0,0,0,0.2)',
-                    boxShadow: searchColor === color.value ? '0 0 0 2px #000' : 'none',
-                    cursor: 'pointer',
+                    border:
+                      searchColor === color.value
+                        ? "3px solid #fff"
+                        : "1px solid rgba(0,0,0,0.2)",
+                    boxShadow:
+                      searchColor === color.value
+                        ? "0 0 0 2px #000"
+                        : "none",
+                    cursor: "pointer",
                   }}
                   onClick={() => setSearchColor(color.value)}
                 />
               ))}
-              <button style={s.btn('ghost')} onClick={() => setSearchColor(null)}>Сбросить</button>
+              <button
+                style={s.btn("ghost")}
+                onClick={() => setSearchColor(null)}
+              >
+                Сбросить
+              </button>
             </div>
           )}
 
-          {searchMode === 'text' && (
+          {searchMode === "text" && (
             <input
               style={s.input}
               placeholder="Поиск по тексту..."
@@ -558,18 +732,21 @@ function NoteDetail({
             <div style={s.empty}>Нет блоков, соответствующих фильтру</div>
           ) : (
             getFilteredBlocks().map((block, index) => (
-              <div key={index} style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>
+              <div
+                key={index}
+                style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}
+              >
                 {block.link ? (
-                  <a 
-                    href={block.link} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
+                  <a
+                    href={block.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     style={{
-                      background: block.background || 'transparent',
-                      padding: '2px 4px',
+                      background: block.background || "transparent",
+                      padding: "2px 4px",
                       borderRadius: 4,
                       color: t.accent,
-                      textDecoration: 'underline',
+                      textDecoration: "underline",
                     }}
                   >
                     {highlightText(block.text, searchText)}
@@ -577,8 +754,8 @@ function NoteDetail({
                 ) : (
                   <span
                     style={{
-                      background: block.background || 'transparent',
-                      padding: '2px 4px',
+                      background: block.background || "transparent",
+                      padding: "2px 4px",
                       borderRadius: 4,
                       color: t.text,
                     }}
@@ -586,15 +763,41 @@ function NoteDetail({
                     {highlightText(block.text, searchText)}
                   </span>
                 )}
-                {block.background && <span style={{ fontSize: 10, color: t.textMuted, marginLeft: 8 }}>🖍️</span>}
-                {block.link && <span style={{ fontSize: 10, color: t.textMuted, marginLeft: 8 }}>🔗</span>}
+                {block.background && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: t.textMuted,
+                      marginLeft: 8,
+                    }}
+                  >
+                    🖍️
+                  </span>
+                )}
+                {block.link && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: t.textMuted,
+                      marginLeft: 8,
+                    }}
+                  >
+                    🔗
+                  </span>
+                )}
               </div>
             ))
           )}
         </div>
       </div>
 
-      <div style={isTablet && isLandscape ? {} : { borderTop: `1px solid ${t.border}`, paddingTop: 16 }}>
+      <div
+        style={
+          isTablet && isLandscape
+            ? {}
+            : { borderTop: `1px solid ${t.border}`, paddingTop: 16 }
+        }
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button
             style={s.btn("secondary")}
@@ -604,15 +807,37 @@ function NoteDetail({
             }}
             disabled={aiLoading}
           >
-            <Icon d={icons.star} size={16} /> {aiLoading ? "Анализирую..." : "ИИ-резюме"}
+            <Icon d={icons.star} size={16} />{" "}
+            {aiLoading ? "Анализирую..." : "ИИ-резюме"}
           </button>
         </div>
         {showSummary && note.aiSummary && (
-          <div style={{ ...s.card, marginTop: 16, borderColor: t.accent, background: `${t.accent}11` }}>
-            <div style={{ fontSize: 12, color: t.accent, fontWeight: 600, marginBottom: 8 }}>
+          <div
+            style={{
+              ...s.card,
+              marginTop: 16,
+              borderColor: t.accent,
+              background: `${t.accent}11`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: t.accent,
+                fontWeight: 600,
+                marginBottom: 8,
+              }}
+            >
               🤖 ИИ-анализ
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", color: t.text }}>
+            <div
+              style={{
+                fontSize: 13,
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                color: t.text,
+              }}
+            >
               {note.aiSummary}
             </div>
           </div>
@@ -620,10 +845,10 @@ function NoteDetail({
       </div>
     </div>
   );
-}
+                }
 export default function SmartNotesApp() {
-  const [data, setData] = useState(loadData);
-  const [theme, setTheme] = useState(data.theme);
+  const [data, setData] = useState(() => loadData());
+  const [theme, setTheme] = useState(data.theme || "light");
   const [tab, setTab] = useState("notes");
   const [view, setView] = useState("list");
   const [activeNote, setActiveNote] = useState(null);
@@ -639,19 +864,25 @@ export default function SmartNotesApp() {
   const [librarySearch, setLibrarySearch] = useState("");
   const [libName, setLibName] = useState("");
   const [libContent, setLibContent] = useState("");
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const [windowHeight, setWindowHeight] = useState(window.innerHeight);
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 1024
+  );
+  const [windowHeight, setWindowHeight] = useState(
+    typeof window !== "undefined" ? window.innerHeight : 768
+  );
   const chatRef = useRef(null);
 
-  const [saveStatus, setSaveStatus] = useState('idle');
+  const [saveStatus, setSaveStatus] = useState("idle");
   const [draftExists, setDraftExists] = useState(false);
-  const [saveTimer, setSaveTimer] = useState(null);
+  const saveTimerRef = useRef(null);
+
   const t = themes[theme];
 
   const filteredLibrary = useMemo(() => {
-    return data.library.filter((item) =>
-      item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-      item.content.toLowerCase().includes(librarySearch.toLowerCase())
+    return data.library.filter(
+      (item) =>
+        item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+        item.content.toLowerCase().includes(librarySearch.toLowerCase())
     );
   }, [data.library, librarySearch]);
 
@@ -674,7 +905,6 @@ export default function SmartNotesApp() {
   const isLandscape = windowWidth > windowHeight;
 
   let maxWidth, contentPadding, headerPadding, cardPadding, bottomNavPadding;
-
   if (isMobile) {
     maxWidth = isLandscape ? "100%" : "480px";
     contentPadding = "16px";
@@ -716,91 +946,134 @@ export default function SmartNotesApp() {
   }, []);
 
   useEffect(() => {
-    if (view === 'edit' && activeNote) {
-      if (saveTimer) clearTimeout(saveTimer);
+    if (view === "edit" && activeNote) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       const timer = setTimeout(() => {
         saveDraft(activeNote);
-        setSaveStatus('saving');
+        setSaveStatus("saving");
+
         if (activeNote.id) {
-          const exists = data.notes.find(n => n.id === activeNote.id);
+          const exists = data.notes.find((n) => n.id === activeNote.id);
           if (exists) {
-            const notes = data.notes.map(n =>
-              n.id === activeNote.id ? { ...activeNote, updatedAt: new Date().toISOString() } : n
+            const notes = data.notes.map((n) =>
+              n.id === activeNote.id
+                ? { ...activeNote, updatedAt: new Date().toISOString() }
+                : n
             );
             persist({ ...data, notes });
-            setSaveStatus('saved');
+            setSaveStatus("saved");
             setDraftExists(true);
-          } else if (activeNote.title || activeNote.body) {
-            const newNote = { ...activeNote, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          } else if (
+            activeNote.title ||
+            activeNote.body ||
+            (activeNote.blocks &&
+              activeNote.blocks.some((b) => b.text && b.text.trim()))
+          ) {
+            const newNote = {
+              ...activeNote,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
             persist({ ...data, notes: [newNote, ...data.notes] });
             setActiveNote(newNote);
-            setSaveStatus('saved');
+            setSaveStatus("saved");
             setDraftExists(true);
+          } else {
+            setSaveStatus("idle");
           }
-        } else if (activeNote.title || activeNote.body) {
-          setSaveStatus('saved');
+        } else if (
+          activeNote.title ||
+          activeNote.body ||
+          (activeNote.blocks &&
+            activeNote.blocks.some((b) => b.text && b.text.trim()))
+        ) {
+          setSaveStatus("saved");
           setDraftExists(true);
+        } else {
+          setSaveStatus("idle");
         }
-        setTimeout(() => { if (saveStatus !== 'saving') setSaveStatus('idle'); }, 2000);
+
+        setTimeout(() => {
+          setSaveStatus("idle");
+        }, 2000);
       }, 2000);
-      setSaveTimer(timer);
+
+      saveTimerRef.current = timer;
       return () => clearTimeout(timer);
     }
-  }, [activeNote, view, data, saveStatus, saveTimer]);
-useEffect(() => {
-  const handleVisibilityChange = () => {
-    if (document.hidden && view === 'edit' && activeNote && (activeNote.title || activeNote.body)) {
-      saveDraft(activeNote);
-      setDraftExists(true);
-      if (activeNote.id) {
-        const exists = data.notes.find(n => n.id === activeNote.id);
-        if (exists) {
-          const notes = data.notes.map(n =>
-            n.id === activeNote.id ? { ...activeNote, updatedAt: new Date().toISOString() } : n
-          );
-          persist({ ...data, notes });
+  }, [activeNote, view, data]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.hidden &&
+        view === "edit" &&
+        activeNote &&
+        (activeNote.title ||
+          activeNote.body ||
+          (activeNote.blocks &&
+            activeNote.blocks.some((b) => b.text && b.text.trim())))
+      ) {
+        saveDraft(activeNote);
+        setDraftExists(true);
+        if (activeNote.id) {
+          const exists = data.notes.find((n) => n.id === activeNote.id);
+          if (exists) {
+            const notes = data.notes.map((n) =>
+              n.id === activeNote.id
+                ? { ...activeNote, updatedAt: new Date().toISOString() }
+                : n
+            );
+            persist({ ...data, notes });
+          }
         }
       }
-    }
-  };
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-}, [activeNote, view, data]);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [activeNote, view, data]);
 
-useEffect(() => {
-  const handleBeforeUnload = (e) => {
-    if (view === 'edit' && activeNote && (activeNote.title || activeNote.body)) {
-      saveDraft(activeNote);
-      e.preventDefault();
-      e.returnValue = 'У вас есть несохраненные изменения.';
-    }
-  };
-  window.addEventListener('beforeunload', handleBeforeUnload);
-  return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-}, [activeNote, view]);
-
-const restoreDraft = () => {
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (
+        view === "edit" &&
+        activeNote &&
+        (activeNote.title ||
+          activeNote.body ||
+          (activeNote.blocks &&
+            activeNote.blocks.some((b) => b.text && b.text.trim())))
+      ) {
+        saveDraft(activeNote);
+        e.preventDefault();
+        e.returnValue = "У вас есть несохраненные изменения.";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [activeNote, view]);
+  const restoreDraft = () => {
   const draft = loadDraft();
   if (draft) {
     setActiveNote(draft);
-    setView('edit');
+    setView("edit");
     setDraftExists(false);
     clearDraft();
-    showNotification('🔄 Черновик восстановлен');
+    showNotification("🔄 Черновик восстановлен");
   }
 };
 
 const discardDraft = () => {
   clearDraft();
   setDraftExists(false);
-  showNotification('🗑️ Черновик удален');
+  showNotification("🗑️ Черновик удален");
 };
 
 const showNotification = (message) => {
-  const notification = document.createElement('div');
+  const notification = document.createElement("div");
   notification.style.cssText = `
     position: fixed;
-    bottom: ${isMobile ? '80px' : '100px'};
+    bottom: ${isMobile ? "80px" : "100px"};
     left: 50%;
     transform: translateX(-50%);
     padding: 12px 24px;
@@ -818,34 +1091,44 @@ const showNotification = (message) => {
   notification.textContent = message;
   document.body.appendChild(notification);
   setTimeout(() => {
-    notification.style.opacity = '0';
-    notification.style.transition = 'opacity 0.3s';
+    notification.style.opacity = "0";
+    notification.style.transition = "opacity 0.3s";
     setTimeout(() => notification.remove(), 300);
   }, 3000);
 };
 
 const addCategory = () => {
   if (!newCategoryName.trim()) return;
-  const category = { id: Date.now(), name: newCategoryName, color: newCategoryColor };
+  const category = {
+    id: Date.now(),
+    name: newCategoryName,
+    color: newCategoryColor,
+  };
   persist({ ...data, categories: [...data.categories, category] });
   setNewCategoryName("");
   setNewCategoryColor("#6366F1");
   setShowCategoryModal(false);
-  showNotification('✅ Категория создана');
+  showNotification("✅ Категория создана");
 };
 
 const deleteCategory = (id) => {
-  const notes = data.notes.map((n) => (n.categoryId === id ? { ...n, categoryId: null } : n));
-  persist({ ...data, categories: data.categories.filter((c) => c.id !== id), notes });
-  showNotification('🗑️ Категория удалена');
+  const notes = data.notes.map((n) =>
+    n.categoryId === id ? { ...n, categoryId: null } : n
+  );
+  persist({
+    ...data,
+    categories: data.categories.filter((c) => c.id !== id),
+    notes,
+  });
+  showNotification("🗑️ Категория удалена");
 };
 
 const newNote = () => {
   const draft = loadDraft();
   if (draft && (draft.title || draft.body || draft.blocks)) {
-    if (window.confirm('У вас есть несохраненный черновик. Использовать его?')) {
+    if (window.confirm("У вас есть несохраненный черновик. Использовать его?")) {
       setActiveNote(draft);
-      setView('edit');
+      setView("edit");
       clearDraft();
       setDraftExists(false);
       return;
@@ -854,7 +1137,7 @@ const newNote = () => {
   setActiveNote({
     id: Date.now(),
     title: "",
-    blocks: [{ text: '', background: null, link: null }],
+    blocks: [{ text: "", background: null, link: null }],
     tags: [],
     categoryId: activeCategory,
     createdAt: new Date().toISOString(),
@@ -866,12 +1149,14 @@ const newNote = () => {
 
 const saveNote = (note) => {
   const exists = data.notes.find((n) => n.id === note.id);
-  const notes = exists ? data.notes.map((n) => (n.id === note.id ? note : n)) : [note, ...data.notes];
+  const notes = exists
+    ? data.notes.map((n) => (n.id === note.id ? note : n))
+    : [note, ...data.notes];
   persist({ ...data, notes });
   clearDraft();
   setDraftExists(false);
   setView("list");
-  showNotification('✅ Заметка сохранена');
+  showNotification("✅ Заметка сохранена");
 };
 
 const deleteNote = (id) => {
@@ -880,24 +1165,72 @@ const deleteNote = (id) => {
   clearDraft();
   setDraftExists(false);
   setView("list");
-  showNotification('🗑️ Заметка удалена');
+  showNotification("🗑️ Заметка удалена");
 };
 
 const filtered = data.notes.filter((n) => {
+  const tags = n.tags || [];
   const matchSearch =
-    n.title.toLowerCase().includes(search.toLowerCase()) ||
-    (n.blocks && n.blocks.some(b => b.text.toLowerCase().includes(search.toLowerCase()))) ||
-    n.tags.some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
-  const matchCategory = activeCategory === null || n.categoryId === activeCategory;
+    (n.title && n.title.toLowerCase().includes(search.toLowerCase())) ||
+    (n.blocks &&
+      n.blocks.some((b) =>
+        b.text && b.text.toLowerCase().includes(search.toLowerCase())
+      )) ||
+    tags.some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
+  const matchCategory =
+    activeCategory === null || n.categoryId === activeCategory;
   return matchSearch && matchCategory;
 });
 
-const notesContext = filtered.slice(0, 20).map((n) => {
-  const text = n.blocks ? n.blocks.map(b => b.text).join(' ') : n.body || '';
-  return `[${n.title}]: ${text.slice(0, 300)}`;
-}).join("\n\n");
+const notesContext = filtered
+  .slice(0, 20)
+  .map((n) => {
+    const text = n.blocks
+      ? n.blocks.map((b) => b.text).join(" ")
+      : n.body || "";
+    return `[${n.title}]: ${text.slice(0, 300)}`;
+  })
+  .join("\n\n");
 
-const libraryContext = data.library.slice(0, 10).map((item) => `[${item.name}]: ${item.content.slice(0, 500)}`).join("\n\n");
+const libraryContext = data.library
+  .slice(0, 10)
+  .map((item) => `[${item.name}]: ${item.content.slice(0, 500)}`)
+  .join("\n\n");
+
+// ✅ aiSummarize вынесена на уровень компонента
+const aiSummarize = async (note) => {
+  setAiLoading(true);
+  try {
+    const reply = await askAI(
+      [
+        {
+          role: "user",
+          content: `Сделай краткое резюме этой заметки и предложи 3 вопроса для самопроверки:\n\n${note.title}\n${
+            note.blocks ? note.blocks.map((b) => b.text).join(" ") : note.body
+          }`,
+        },
+      ],
+      "Ты помощник для учёбы. Отвечай на русском."
+    );
+
+    const updatedNote = { ...note, aiSummary: reply };
+    setActiveNote(updatedNote);
+
+    const exists = data.notes.find((n) => n.id === note.id);
+    if (exists) {
+      const notes = data.notes.map((n) =>
+        n.id === note.id ? updatedNote : n
+      );
+      persist({ ...data, notes });
+    } else {
+      persist({ ...data, notes: [updatedNote, ...data.notes] });
+    }
+  } catch (err) {
+    console.error("aiSummarize error:", err);
+  } finally {
+    setAiLoading(false);
+  }
+};
   const s = useMemo(() => {
   const fontSize = {
     xs: isMobile ? 10 : 12,
@@ -942,7 +1275,9 @@ const libraryContext = data.library.slice(0, 10).map((item) => `[${item.name}]: 
       letterSpacing: "-0.3px",
       flex: 1,
       color: theme === "dark" ? "transparent" : t.accent,
-      background: theme === "dark" ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})` : "none",
+      background: theme === "dark"
+        ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})`
+        : "none",
       WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
       WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
     },
@@ -980,7 +1315,11 @@ const libraryContext = data.library.slice(0, 10).map((item) => `[${item.name}]: 
       overflow: "hidden",
     },
     btn: (variant = "primary") => ({
-      padding: isMobile ? (isLandscape ? "12px 20px" : "10px 16px") : "14px 28px",
+      padding: isMobile
+        ? isLandscape
+          ? "12px 20px"
+          : "10px 16px"
+        : "14px 28px",
       borderRadius: 8,
       border: "none",
       cursor: "pointer",
@@ -1046,7 +1385,9 @@ const libraryContext = data.library.slice(0, 10).map((item) => `[${item.name}]: 
     bubble: (isUser) => ({
       maxWidth: "82%",
       padding: isMobile ? "10px 14px" : "12px 18px",
-      borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+      borderRadius: isUser
+        ? "16px 16px 4px 16px"
+        : "16px 16px 16px 4px",
       background: isUser ? t.accent : t.card,
       color: isUser ? "#fff" : t.text,
       fontSize: fontSize.sm,
@@ -1136,31 +1477,50 @@ const libraryContext = data.library.slice(0, 10).map((item) => `[${item.name}]: 
     navIcon: { fontSize: isMobile ? 20 : 24 },
     navLabel: { fontSize: isMobile ? 9 : 11, marginTop: 2 },
   };
-}, [t, theme, isMobile, isLandscape, maxWidth, headerPadding, contentPadding, cardPadding, bottomNavPadding]);
+}, [
+  t,
+  theme,
+  isMobile,
+  isLandscape,
+  maxWidth,
+  headerPadding,
+  contentPadding,
+  cardPadding,
+  bottomNavPadding,
+]);
 
 const SaveIndicator = () => {
-  if (saveStatus === 'idle' && !draftExists) return null;
-  let statusText = '';
+  if (saveStatus === "idle" && !draftExists) return null;
+  let statusText = "";
   let statusColor = t.textMuted;
-  if (saveStatus === 'saving') { statusText = '💾 Сохранение...'; statusColor = t.warning; }
-  else if (saveStatus === 'saved') { statusText = '✅ Сохранено'; statusColor = t.success; }
-  else if (draftExists && view !== 'edit') { statusText = '📝 Есть черновик'; statusColor = t.accent; }
+  if (saveStatus === "saving") {
+    statusText = "💾 Сохранение...";
+    statusColor = t.warning;
+  } else if (saveStatus === "saved") {
+    statusText = "✅ Сохранено";
+    statusColor = t.success;
+  } else if (draftExists && view !== "edit") {
+    statusText = "📝 Есть черновик";
+    statusColor = t.accent;
+  }
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: isMobile ? 80 : 100,
-      right: 20,
-      padding: '8px 16px',
-      borderRadius: 8,
-      background: t.surface,
-      border: `1px solid ${statusColor}`,
-      color: statusColor,
-      fontSize: 12,
-      zIndex: 1000,
-      transition: 'all 0.3s',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      maxWidth: '90%',
-    }}>
+    <div
+      style={{
+        position: "fixed",
+        bottom: isMobile ? 80 : 100,
+        right: 20,
+        padding: "8px 16px",
+        borderRadius: 8,
+        background: t.surface,
+        border: `1px solid ${statusColor}`,
+        color: statusColor,
+        fontSize: 12,
+        zIndex: 1000,
+        transition: "all 0.3s",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+        maxWidth: "90%",
+      }}
+    >
       {statusText}
     </div>
   );
@@ -1208,31 +1568,81 @@ const SaveIndicator = () => {
 
     return (
       <div>
-        <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${t.border}` }}>
-          <div style={{ ...s.row, marginBottom: 12, justifyContent: "space-between" }}>
-            <div style={{ fontSize: s.label.fontSize, fontWeight: 600, color: t.textMuted }}>📂 КАТЕГОРИИ</div>
-            <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(true)}>
+        <div
+          style={{
+            marginBottom: 16,
+            paddingBottom: 12,
+            borderBottom: `1px solid ${t.border}`,
+          }}
+        >
+          <div
+            style={{
+              ...s.row,
+              marginBottom: 12,
+              justifyContent: "space-between",
+            }}
+          >
+            <div
+              style={{
+                fontSize: s.label.fontSize,
+                fontWeight: 600,
+                color: t.textMuted,
+              }}
+            >
+              📂 КАТЕГОРИИ
+            </div>
+            <button
+              style={s.btn("ghost")}
+              onClick={() => setShowCategoryModal(true)}
+            >
               <Icon d={icons.plus} size={14} />
             </button>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, overflowX: "auto" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              overflowX: "auto",
+            }}
+          >
             <button
               style={{
                 ...s.categoryBadge(t.accent),
-                border: activeCategory === null ? `2px solid ${t.accent}` : `1px solid ${t.accent}66`,
-                background: activeCategory === null ? `${t.accent}44` : `${t.accent}22`,
+                border:
+                  activeCategory === null
+                    ? `2px solid ${t.accent}`
+                    : `1px solid ${t.accent}66`,
+                background:
+                  activeCategory === null
+                    ? `${t.accent}44`
+                    : `${t.accent}22`,
               }}
               onClick={() => setActiveCategory(null)}
             >
               Все
             </button>
             {data.categories.map((cat) => (
-              <div key={cat.id} style={{ display: "inline-flex", alignItems: "center", gap: 2, marginBottom: 4 }}>
+              <div
+                key={cat.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
+                  marginBottom: 4,
+                }}
+              >
                 <button
                   style={{
                     ...s.categoryBadge(cat.color),
-                    border: activeCategory === cat.id ? `2px solid ${cat.color}` : `1px solid ${cat.color}66`,
-                    background: activeCategory === cat.id ? `${cat.color}44` : `${cat.color}22`,
+                    border:
+                      activeCategory === cat.id
+                        ? `2px solid ${cat.color}`
+                        : `1px solid ${cat.color}66`,
+                    background:
+                      activeCategory === cat.id
+                        ? `${cat.color}44`
+                        : `${cat.color}22`,
                     marginRight: 0,
                   }}
                   onClick={() => setActiveCategory(cat.id)}
@@ -1258,7 +1668,11 @@ const SaveIndicator = () => {
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(`Удалить категорию "${cat.name}"? Заметки станут "без категории"`)) {
+                    if (
+                      window.confirm(
+                        `Удалить категорию "${cat.name}"? Заметки станут "без категории"`
+                      )
+                    ) {
                       deleteCategory(cat.id);
                     }
                   }}
@@ -1272,36 +1686,62 @@ const SaveIndicator = () => {
         </div>
 
         {draftExists && (
-          <div style={{
-            padding: '12px 16px',
-            background: `${t.accent}22`,
-            borderRadius: 8,
-            marginBottom: 12,
-            border: `1px solid ${t.accent}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 8,
-          }}>
-            <span style={{ fontSize: 14 }}>📝 У вас есть несохраненный черновик</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={s.btn("primary")} onClick={restoreDraft}>Восстановить</button>
-              <button style={s.btn("ghost")} onClick={discardDraft}>Удалить</button>
+          <div
+            style={{
+              padding: "12px 16px",
+              background: `${t.accent}22`,
+              borderRadius: 8,
+              marginBottom: 12,
+              border: `1px solid ${t.accent}`,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>
+              📝 У вас есть несохраненный черновик
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                style={s.btn("primary")}
+                onClick={restoreDraft}
+              >
+                Восстановить
+              </button>
+              <button
+                style={s.btn("ghost")}
+                onClick={discardDraft}
+              >
+                Удалить
+              </button>
             </div>
           </div>
         )}
 
         <div style={{ ...s.row, marginBottom: 12, gap: 12 }}>
           <div style={{ position: "relative", flex: 1 }}>
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: t.textMuted }}>
+            <span
+              style={{
+                position: "absolute",
+                left: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: t.textMuted,
+              }}
+            >
               <Icon d={icons.search} size={16} />
             </span>
-            <input style={{ ...s.input, paddingLeft: 34 }} placeholder="Поиск..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              style={{ ...s.input, paddingLeft: 34 }}
+              placeholder="Поиск..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
           <button style={s.btn("primary")} onClick={newNote}>
-            <Icon d={icons.plus} size={16} />
-            {!isMobile && "Новая"}
+            <Icon d={icons.plus} size={16} /> {!isMobile && "Новая"}
           </button>
         </div>
 
@@ -1309,24 +1749,74 @@ const SaveIndicator = () => {
           <div style={s.empty}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Нет заметок</div>
-            <div style={{ fontSize: 13 }}>{activeCategory !== null ? "Создайте заметку в этой категории" : "Создайте первую заметку"}</div>
+            <div style={{ fontSize: 13 }}>
+              {activeCategory !== null
+                ? "Создайте заметку в этой категории"
+                : "Создайте первую заметку"}
+            </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${gridColumns}, 1fr)`, gap: isTablet ? 16 : 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+              gap: isTablet ? 16 : 12,
+            }}
+          >
             {filtered.map((note) => {
-              const cat = data.categories.find((c) => c.id === note.categoryId);
+              const cat = data.categories.find(
+                (c) => c.id === note.categoryId
+              );
               return (
-                <div key={note.id} style={s.card} onClick={() => { setActiveNote(note); setView("detail"); }}>
-                  <div style={s.cardTitle}>{note.title || "Без названия"}</div>
+                <div
+                  key={note.id}
+                  style={s.card}
+                  onClick={() => {
+                    setActiveNote(note);
+                    setView("detail");
+                  }}
+                >
+                  <div style={s.cardTitle}>
+                    {note.title || "Без названия"}
+                  </div>
                   <div style={s.cardText}>
-                    {note.blocks ? note.blocks.map(b => b.text).join(' ') : note.body}
+                    {note.blocks
+                      ? note.blocks.map((b) => b.text).join(" ")
+                      : note.body}
                   </div>
                   <div style={{ marginTop: 8 }}>
-                    {cat && <span style={s.categoryBadge(cat.color)}>{cat.name}</span>}
-                    {note.tags && note.tags.map((tag) => (
-                      <span key={tag} style={{ display: "inline-block", background: `${t.accent}22`, color: t.accent, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 500, marginRight: 4, marginBottom: 4 }}>{tag}</span>
-                    ))}
-                    <span style={{ fontSize: 11, color: t.textMuted, float: "right", marginTop: 2 }}>
+                    {cat && (
+                      <span style={s.categoryBadge(cat.color)}>
+                        {cat.name}
+                      </span>
+                    )}
+                    {note.tags &&
+                      note.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          style={{
+                            display: "inline-block",
+                            background: `${t.accent}22`,
+                            color: t.accent,
+                            borderRadius: 6,
+                            padding: "2px 8px",
+                            fontSize: 11,
+                            fontWeight: 500,
+                            marginRight: 4,
+                            marginBottom: 4,
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: t.textMuted,
+                        float: "right",
+                        marginTop: 2,
+                      }}
+                    >
                       {new Date(note.createdAt).toLocaleDateString("ru")}
                     </span>
                   </div>
@@ -1365,56 +1855,103 @@ ${libraryContext || "Библиотека пуста."}`;
           history.map((m) => ({ role: m.role, content: m.content })),
           systemPrompt
         );
-        persist({ ...data, chatHistory: [...history, { role: "assistant", content: reply }] });
+        persist({
+          ...data,
+          chatHistory: [...history, { role: "assistant", content: reply }],
+        });
       } catch (_) {
-        persist({ ...data, chatHistory: [...history, { role: "assistant", content: "Ошибка соединения. Попробуйте снова." }] });
+        persist({
+          ...data,
+          chatHistory: [
+            ...history,
+            { role: "assistant", content: "Ошибка соединения. Попробуйте снова." },
+          ],
+        });
       }
       setChatLoading(false);
     };
-const aiSummarize = async (note) => {
-  setAiLoading(true);
-  try {
-    const reply = await askAI(
-      [
-        {
-          role: "user",
-          content: `Сделай краткое резюме этой заметки и предложи 3 вопроса для самопроверки:\n\n${note.title}\n${note.blocks ? note.blocks.map(b => b.text).join(' ') : note.body}`,
-        },
-      ],
-      "Ты помощник для учёбы. Отвечай на русском."
-    );
-    setActiveNote({ ...note, aiSummary: reply });
-  } catch (_) {}
-  setAiLoading(false);
-};
+
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - " + (isMobile ? "180px" : "200px") + ")" }}>
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 8 }} ref={chatRef}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "calc(100vh - " + (isMobile ? "180px" : "200px") + ")",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            paddingBottom: 8,
+          }}
+          ref={chatRef}
+        >
           {data.chatHistory.length === 0 && (
             <div style={s.empty}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>ИИ-ассистент</div>
-              <div style={{ fontSize: 13 }}>Я помогу вам с заметками и библиотекой. Спрашивайте что угодно!</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                ИИ-ассистент
+              </div>
+              <div style={{ fontSize: 13 }}>
+                Я помогу вам с заметками и библиотекой. Спрашивайте что угодно!
+              </div>
             </div>
           )}
           {data.chatHistory.map((m, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", paddingRight: m.role === "user" ? 0 : 8, paddingLeft: m.role === "user" ? 8 : 0 }}>
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                paddingRight: m.role === "user" ? 0 : 8,
+                paddingLeft: m.role === "user" ? 8 : 0,
+              }}
+            >
               <div style={s.bubble(m.role === "user")}>{m.content}</div>
             </div>
           ))}
           {chatLoading && (
             <div style={{ display: "flex" }}>
-              <div style={{ ...s.bubble(false), color: t.textMuted }}>Думаю...</div>
+              <div style={{ ...s.bubble(false), color: t.textMuted }}>
+                Думаю...
+              </div>
             </div>
           )}
         </div>
-        <div style={{ ...s.row, paddingTop: 8, borderTop: `1px solid ${t.border}`, paddingBottom: 8, gap: 12 }}>
-          <input style={{ ...s.input, flex: 1 }} placeholder="Спросите..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChat()} disabled={chatLoading} />
-          <button style={{ ...s.btn("primary"), padding: "10px 14px" }} onClick={sendChat} disabled={chatLoading}>
+        <div
+          style={{
+            ...s.row,
+            paddingTop: 8,
+            borderTop: `1px solid ${t.border}`,
+            paddingBottom: 8,
+            gap: 12,
+          }}
+        >
+          <input
+            style={{ ...s.input, flex: 1 }}
+            placeholder="Спросите..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendChat()}
+            disabled={chatLoading}
+          />
+          <button
+            style={{ ...s.btn("primary"), padding: "10px 14px" }}
+            onClick={sendChat}
+            disabled={chatLoading}
+          >
             <Icon d={icons.send} size={16} />
           </button>
           {data.chatHistory.length > 0 && (
-            <button style={s.btn("ghost")} onClick={() => persist({ ...data, chatHistory: [] })} title="Очистить">
+            <button
+              style={s.btn("ghost")}
+              onClick={() => persist({ ...data, chatHistory: [] })}
+              title="Очистить"
+            >
               <Icon d={icons.trash} size={16} />
             </button>
           )}
@@ -1426,43 +1963,86 @@ const aiSummarize = async (note) => {
   const renderLibrary = () => {
     const handleAddToLibrary = () => {
       if (libName.trim() && libContent.trim()) {
-        const libraryItem = { id: Date.now(), name: libName, content: libContent, type: "file", uploadedAt: new Date().toISOString() };
+        const libraryItem = {
+          id: Date.now(),
+          name: libName,
+          content: libContent,
+          type: "file",
+          uploadedAt: new Date().toISOString(),
+        };
         persist({ ...data, library: [...data.library, libraryItem] });
         setLibName("");
         setLibContent("");
-        showNotification('📚 Файл добавлен в библиотеку');
+        showNotification("📚 Файл добавлен в библиотеку");
       }
     };
 
     const deleteFromLibrary = (id) => {
-      persist({ ...data, library: data.library.filter((item) => item.id !== id) });
-      showNotification('🗑️ Файл удален из библиотеки');
+      persist({
+        ...data,
+        library: data.library.filter((item) => item.id !== id),
+      });
+      showNotification("🗑️ Файл удален из библиотеки");
     };
 
-    const filteredLibraryItems = data.library.filter((item) =>
-      item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-      item.content.toLowerCase().includes(librarySearch.toLowerCase())
+    const filteredLibraryItems = data.library.filter(
+      (item) =>
+        item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+        item.content.toLowerCase().includes(librarySearch.toLowerCase())
     );
 
     return (
       <div>
-        <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${t.border}` }}>
+        <div
+          style={{
+            marginBottom: 20,
+            paddingBottom: 16,
+            borderBottom: `1px solid ${t.border}`,
+          }}
+        >
           <div style={{ ...s.row, marginBottom: 12, gap: 8 }}>
-            <input type="text" style={{ ...s.input, flex: 1 }} placeholder="Название файла..." value={libName} onChange={(e) => setLibName(e.target.value)} />
-            <button style={s.btn("primary")} onClick={handleAddToLibrary}>
-              <Icon d={icons.upload} size={16} />
-              {!isMobile && "Добавить"}
+            <input
+              type="text"
+              style={{ ...s.input, flex: 1 }}
+              placeholder="Название файла..."
+              value={libName}
+              onChange={(e) => setLibName(e.target.value)}
+            />
+            <button
+              style={s.btn("primary")}
+              onClick={handleAddToLibrary}
+            >
+              <Icon d={icons.upload} size={16} /> {!isMobile && "Добавить"}
             </button>
           </div>
-          <textarea style={{ ...s.textarea, marginBottom: 12 }} placeholder="Вставьте содержимое..." rows={isTablet ? 6 : 4} value={libContent} onChange={(e) => setLibContent(e.target.value)} />
+          <textarea
+            style={{ ...s.textarea, marginBottom: 12 }}
+            placeholder="Вставьте содержимое..."
+            rows={isTablet ? 6 : 4}
+            value={libContent}
+            onChange={(e) => setLibContent(e.target.value)}
+          />
         </div>
 
         <div style={{ marginBottom: 12 }}>
           <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: t.textMuted }}>
+            <span
+              style={{
+                position: "absolute",
+                left: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: t.textMuted,
+              }}
+            >
               <Icon d={icons.search} size={16} />
             </span>
-            <input style={{ ...s.input, paddingLeft: 34 }} placeholder="Поиск..." value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} />
+            <input
+              style={{ ...s.input, paddingLeft: 34 }}
+              placeholder="Поиск..."
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+            />
           </div>
         </div>
 
@@ -1473,22 +2053,58 @@ const aiSummarize = async (note) => {
             <div style={{ fontSize: 13 }}>Добавьте файлы для анализа</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${gridColumns}, 1fr)`, gap: isTablet ? 16 : 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridColumns}, 1fr)`,
+              gap: isTablet ? 16 : 12,
+            }}
+          >
             {filteredLibraryItems.map((item) => (
               <div key={item.id} style={s.card}>
-                <div style={{ ...s.row, justifyContent: "space-between", marginBottom: 8 }}>
+                <div
+                  style={{
+                    ...s.row,
+                    justifyContent: "space-between",
+                    marginBottom: 8,
+                  }}
+                >
                   <div style={s.cardTitle}>{item.name}</div>
                   <div style={s.row}>
-                    <button style={s.btn("ghost")} onClick={() => { setChatInput(`Проанализируй это из библиотеки: "${item.name}"\n\n${item.content.slice(0, 200)}...`); setTab("ai"); }} title="Отправить в чат">
+                    <button
+                      style={s.btn("ghost")}
+                      onClick={() => {
+                        setChatInput(
+                          `Проанализируй это из библиотеки: "${item.name}"\n\n${item.content.slice(
+                            0,
+                            200
+                          )}...`
+                        );
+                        setTab("ai");
+                      }}
+                      title="Отправить в чат"
+                    >
                       <Icon d={icons.send} size={14} />
                     </button>
-                    <button style={s.btn("danger")} onClick={() => deleteFromLibrary(item.id)} title="Удалить">
+                    <button
+                      style={s.btn("danger")}
+                      onClick={() => deleteFromLibrary(item.id)}
+                      title="Удалить"
+                    >
                       <Icon d={icons.trash} size={14} />
                     </button>
                   </div>
                 </div>
-                <div style={{ ...s.cardText, display: "block" }}>{item.content.slice(0, 200)}...</div>
-                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 8 }}>
+                <div style={{ ...s.cardText, display: "block" }}>
+                  {item.content.slice(0, 200)}...
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: t.textMuted,
+                    marginTop: 8,
+                  }}
+                >
                   {new Date(item.uploadedAt).toLocaleDateString("ru")}
                 </div>
               </div>
@@ -1498,7 +2114,7 @@ const aiSummarize = async (note) => {
       </div>
     );
   };
-    const tabs = [
+  const tabs = [
     { id: "notes", label: "Заметки", icon: icons.note },
     { id: "ai", label: "ИИ", icon: icons.ai },
     { id: "library", label: "Библиотека", icon: icons.library },
@@ -1512,14 +2128,31 @@ const aiSummarize = async (note) => {
     return "Тесты";
   };
 
-  const headerTitle = tab === "notes" ? "📝 SmartNotes" : tab === "ai" ? "🤖 ИИ" : tab === "library" ? "📚 Библиотека" : "📋 Тесты";
+  const headerTitle =
+    tab === "notes"
+      ? "📝 SmartNotes"
+      : tab === "ai"
+      ? "🤖 ИИ"
+      : tab === "library"
+      ? "📚 Библиотека"
+      : "📋 Тесты";
 
   return (
     <div style={s.app}>
       <style>{`
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-        body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif; background: ${t.bg}; color: ${t.text}; }
+        html, body {
+          width: 100%;
+          height: 100%;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          user-select: none;
+        }
+        body {
+          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+          background: ${t.bg};
+          color: ${t.text};
+        }
         input, textarea { -webkit-user-select: text; user-select: text; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -1528,17 +2161,33 @@ const aiSummarize = async (note) => {
         ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: ${t.textMuted}; }
         @media (orientation: landscape) { body { overflow: hidden; } }
-        @media (max-width: 768px) { input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } }
+        @media (max-width: 768px) {
+          input::-webkit-outer-spin-button,
+          input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+        }
       `}</style>
 
       <div style={s.header}>
         {(view !== "list" || tab !== "notes") && (
-          <button style={s.btn("ghost")} onClick={() => { setView("list"); setTab("notes"); }}>
+          <button
+            style={s.btn("ghost")}
+            onClick={() => {
+              setView("list");
+              setTab("notes");
+            }}
+          >
             <Icon d={icons.back} size={18} />
           </button>
         )}
         <div style={s.headerTitle}>{headerTitle}</div>
-        <button style={s.btn("ghost")} onClick={toggleTheme} title="Переключить тему">
+        <button
+          style={s.btn("ghost")}
+          onClick={toggleTheme}
+          title="Переключить тему"
+        >
           <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
         </button>
       </div>
@@ -1547,7 +2196,9 @@ const aiSummarize = async (note) => {
         {tab === "notes" && renderNotes()}
         {tab === "ai" && renderAI()}
         {tab === "library" && renderLibrary()}
-        {tab === "quiz" && <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>}
+        {tab === "quiz" && (
+          <div style={s.empty}>📋 Раздел "Тесты" в разработке</div>
+        )}
       </div>
 
       {(view === "list" || tab !== "notes") && (
@@ -1556,9 +2207,14 @@ const aiSummarize = async (note) => {
             <button
               key={t.id}
               style={s.navButton(tab === t.id)}
-              onClick={() => { setTab(t.id); if (t.id === "notes") setView("list"); }}
+              onClick={() => {
+                setTab(t.id);
+                if (t.id === "notes") setView("list");
+              }}
             >
-              <div style={s.navIcon}><Icon d={t.icon} size={isMobile ? 20 : 24} /></div>
+              <div style={s.navIcon}>
+                <Icon d={t.icon} size={isMobile ? 20 : 24} />
+              </div>
               <div style={s.navLabel}>{getTabLabel(t.id)}</div>
             </button>
           ))}
@@ -1568,22 +2224,52 @@ const aiSummarize = async (note) => {
       {showCategoryModal && (
         <div style={s.modal} onClick={() => setShowCategoryModal(false)}>
           <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={{ ...s.cardTitle, marginBottom: 16 }}><Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория</div>
+            <div style={{ ...s.cardTitle, marginBottom: 16 }}>
+              <Icon d={icons.folder} size={16} style={{ marginRight: 6 }} /> Новая категория
+            </div>
             <div style={s.section}>
               <label style={s.label}>Название</label>
-              <input style={s.input} placeholder="Например: 📚 Учёба" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+              <input
+                style={s.input}
+                placeholder="Например: 📚 Учёба"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+              />
             </div>
             <div style={s.section}>
               <label style={s.label}>Цвет</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((color) => (
-                  <button key={color} style={{ width: 40, height: 40, borderRadius: 8, background: color, border: newCategoryColor === color ? `3px solid ${t.text}` : `2px solid ${t.border}`, cursor: "pointer" }} onClick={() => setNewCategoryColor(color)} />
-                ))}
+                {["#6366F1", "#2DD4BF", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map(
+                  (color) => (
+                    <button
+                      key={color}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 8,
+                        background: color,
+                        border:
+                          newCategoryColor === color
+                            ? `3px solid ${t.text}`
+                            : `2px solid ${t.border}`,
+                        cursor: "pointer",
+                      }}
+                      onClick={() => setNewCategoryColor(color)}
+                    />
+                  )
+                )}
               </div>
             </div>
             <div style={{ ...s.row, justifyContent: "flex-end", gap: 8 }}>
-              <button style={s.btn("ghost")} onClick={() => setShowCategoryModal(false)}>Отмена</button>
-              <button style={s.btn("primary")} onClick={addCategory}><Icon d={icons.plus} size={16} /> Создать</button>
+              <button
+                style={s.btn("ghost")}
+                onClick={() => setShowCategoryModal(false)}
+              >
+                Отмена
+              </button>
+              <button style={s.btn("primary")} onClick={addCategory}>
+                <Icon d={icons.plus} size={16} /> Создать
+              </button>
             </div>
           </div>
         </div>
@@ -1592,15 +2278,42 @@ const aiSummarize = async (note) => {
       {showDeleteConfirm && (
         <div style={s.modal} onClick={() => setShowDeleteConfirm(null)}>
           <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={{ ...s.cardTitle, marginBottom: 16, color: t.danger }}>⚠️ Подтвердите удаление</div>
+            <div
+              style={{
+                ...s.cardTitle,
+                marginBottom: 16,
+                color: t.danger,
+              }}
+            >
+              ⚠️ Подтвердите удаление
+            </div>
             <div style={{ marginBottom: 20, fontSize: 14, color: t.text }}>
-              Вы уверены, что хотите удалить заметку <strong>"{activeNote?.title || "Без названия"}"</strong>?
+              Вы уверены, что хотите удалить заметку{" "}
+              <strong>"{activeNote?.title || "Без названия"}"</strong>?
               <br />
-              <span style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>Это действие нельзя отменить.</span>
+              <span
+                style={{
+                  color: t.textMuted,
+                  fontSize: 12,
+                  marginTop: 8,
+                }}
+              >
+                Это действие нельзя отменить.
+              </span>
             </div>
             <div style={{ ...s.row, justifyContent: "flex-end", gap: 8 }}>
-              <button style={s.btn("ghost")} onClick={() => setShowDeleteConfirm(null)}>Отмена</button>
-              <button style={s.btn("danger")} onClick={() => deleteNote(showDeleteConfirm)}><Icon d={icons.trash} size={16} /> Удалить</button>
+              <button
+                style={s.btn("ghost")}
+                onClick={() => setShowDeleteConfirm(null)}
+              >
+                Отмена
+              </button>
+              <button
+                style={s.btn("danger")}
+                onClick={() => deleteNote(showDeleteConfirm)}
+              >
+                <Icon d={icons.trash} size={16} /> Удалить
+              </button>
             </div>
           </div>
         </div>
