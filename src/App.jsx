@@ -1,3 +1,4 @@
+/* App.jsx — рефакторинг: текст + annotations модель для форматирования */
 import { useState, useEffect, useRef, useMemo } from "react";
 
 const themes = {
@@ -33,10 +34,232 @@ const STORAGE_KEY = "smartnotes_v3";
 const DRAFT_KEY = "smartnotes_draft";
 const SCROLL_POSITION_KEY = "smartnotes_scroll";
 
+/* -----------------------
+   Helper functions: annotations model
+   ----------------------- */
+
+/**
+ * Convert legacy blocks -> { text, annotations }
+ * blocks: [{ text, background, link }]
+ */
+function blocksToTextAndAnnotations(blocks = []) {
+  let text = "";
+  const annotations = [];
+  let offset = 0;
+  for (const b of blocks) {
+    const t = b.text || "";
+    if (b.background) {
+      annotations.push({
+        id: `ann_${Date.now()}_${Math.random()}`,
+        type: "color",
+        start: offset,
+        end: offset + t.length,
+        value: b.background,
+      });
+    }
+    if (b.link) {
+      annotations.push({
+        id: `ann_${Date.now()}_${Math.random()}`,
+        type: "link",
+        start: offset,
+        end: offset + t.length,
+        value: b.link,
+      });
+    }
+    text += t;
+    offset += t.length;
+  }
+  return { text, annotations };
+}
+
+/**
+ * Normalize and merge adjacent annotations of same type/value.
+ */
+function normalizeAnnotations(annotations = []) {
+  const anns = annotations.slice().filter((a) => a && a.end > a.start);
+  anns.sort((x, y) => x.start - y.start || x.end - y.end);
+  const merged = [];
+  for (const a of anns) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.type === a.type &&
+      last.value === a.value &&
+      last.end >= a.start
+    ) {
+      last.end = Math.max(last.end, a.end);
+    } else {
+      merged.push({ ...a });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Apply annotation (add color/link) — removes overlapping annotations of same type,
+ * trims them and inserts the new one, then normalizes.
+ */
+function applyAnnotation(annotations = [], start, end, type, value, textLength) {
+  start = Math.max(0, Math.min(start, textLength || Infinity));
+  end = Math.max(0, Math.min(end, textLength || Infinity));
+  if (start >= end) return annotations.slice();
+
+  const result = [];
+  for (const a of annotations) {
+    if (a.type !== type || a.end <= start || a.start >= end) {
+      // keep non-overlapping or different type
+      result.push({ ...a });
+      continue;
+    }
+    // overlap: keep left part
+    if (a.start < start) {
+      result.push({ ...a, end: start });
+    }
+    // keep right part
+    if (a.end > end) {
+      result.push({ ...a, start: end });
+    }
+  }
+
+  // add new annotation
+  result.push({
+    id: `ann_${Date.now()}_${Math.random()}`,
+    type,
+    start,
+    end,
+    value,
+  });
+
+  return normalizeAnnotations(result);
+}
+
+/**
+ * Adjust annotations after a text edit that replaced [editStart, editStart + removedLength) with insertedLength characters.
+ * Simple approach: shift annotations after the edit; trim overlapping.
+ */
+function adjustAnnotationsForEdit(annotations = [], editPos, removedLength, insertedLength) {
+  const delta = insertedLength - removedLength;
+  if (removedLength === 0 && insertedLength === 0) return annotations.slice();
+
+  const res = [];
+  for (const a of annotations) {
+    // entirely before edit
+    if (a.end <= editPos) {
+      res.push({ ...a });
+      continue;
+    }
+    // entirely after edit
+    if (a.start >= editPos + removedLength) {
+      res.push({ ...a, start: a.start + delta, end: a.end + delta });
+      continue;
+    }
+    // overlapping the edit: trim or remove parts
+    const leftPart = a.start < editPos ? { ...a, end: editPos } : null;
+    const rightPart = a.end > editPos + removedLength ? { ...a, start: editPos + delta, end: a.end + delta } : null;
+    if (leftPart && leftPart.end > leftPart.start) res.push(leftPart);
+    if (rightPart && rightPart.end > rightPart.start) res.push(rightPart);
+    // else annotation removed
+  }
+  return normalizeAnnotations(res);
+}
+
+/**
+ * Split text into fragments with applicable annotations for rendering.
+ * Returns [{ text, start, end, annotations: [...] }, ...]
+ */
+function getAnnotatedFragments(text = "", annotations = []) {
+  if (!text) return [];
+  const anns = (annotations || []).slice().filter(a => a.end > a.start && a.start < text.length && a.end > 0);
+  // clamp ann ranges to text bounds
+  anns.forEach(a => {
+    a.start = Math.max(0, Math.min(a.start, text.length));
+    a.end = Math.max(0, Math.min(a.end, text.length));
+  });
+  const boundaries = new Set([0, text.length]);
+  anns.forEach(a => {
+    boundaries.add(a.start);
+    boundaries.add(a.end);
+  });
+  const sorted = Array.from(boundaries).sort((a, b) => a - b);
+  const fragments = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const s = sorted[i], e = sorted[i + 1];
+    if (s === e) continue;
+    const segText = text.slice(s, e);
+    const segAnns = anns.filter(a => a.start < e && a.end > s);
+    fragments.push({ text: segText, start: s, end: e, annotations: segAnns });
+  }
+  return fragments;
+}
+
+/* -----------------------
+   Storage helpers (with migration)
+   ----------------------- */
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw) || {};
+      // ensure defaults
+      const base = {
+        notes: [],
+        categories: [
+          { id: 1, name: "📚 Учёба", color: "#6366F1" },
+          { id: 2, name: "💼 Работа", color: "#2DD4BF" },
+          { id: 3, name: "🎯 Личное", color: "#F59E0B" },
+        ],
+        quizzes: [],
+        chatHistory: [],
+        library: [],
+        theme: "light",
+        aiModel: "llama3.2",
+      };
+      const data = { ...base, ...parsed };
+
+      // Migrate notes: if note.blocks exists (legacy) convert to text+annotations
+      data.notes = (data.notes || []).map((n) => {
+        if (n.text || n.annotations) {
+          // already newer model
+          return {
+            ...n,
+            text: typeof n.text === "string" ? n.text : "",
+            annotations: Array.isArray(n.annotations) ? n.annotations : [],
+            tags: n.tags || [],
+            categoryId: n.categoryId ?? null,
+          };
+        }
+        if (n.blocks && Array.isArray(n.blocks)) {
+          const { text, annotations } = blocksToTextAndAnnotations(n.blocks);
+          return {
+            ...n,
+            text,
+            annotations,
+            tags: n.tags || [],
+            categoryId: n.categoryId ?? null,
+          };
+        }
+        // fallback: body -> single text
+        if (n.body) {
+          return {
+            ...n,
+            text: n.body,
+            annotations: [],
+            tags: n.tags || [],
+            categoryId: n.categoryId ?? null,
+          };
+        }
+        return {
+          ...n,
+          text: "",
+          annotations: [],
+          tags: n.tags || [],
+          categoryId: n.categoryId ?? null,
+        };
+      });
+
+      return data;
+    }
   } catch (_) {}
   return {
     notes: [],
@@ -88,11 +311,15 @@ function saveScrollPosition(noteId, position) {
 function loadScrollPosition(noteId) {
   try {
     const pos = localStorage.getItem(`${SCROLL_POSITION_KEY}_${noteId}`);
-    return pos ? parseInt(pos, 10) : 0;
+    const p = pos ? parseInt(pos, 10) : 0;
+    return Number.isNaN(p) ? 0 : p;
   } catch (_) {}
   return 0;
 }
 
+/* -----------------------
+   AI helper (unchanged logic, small safety)
+   ----------------------- */
 async function askAI(messages, systemPrompt) {
   const userMessage = messages[messages.length - 1]?.content || "";
 
@@ -111,6 +338,12 @@ async function askAI(messages, systemPrompt) {
 
     if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
       fetchOptions.signal = AbortSignal.timeout(15000);
+    }
+
+    // NOTE: Add Authorization header if you have a key in env
+    const apiKey = (typeof process !== "undefined" && process.env && process.env.REACT_APP_OPENROUTER_KEY) || null;
+    if (apiKey) {
+      fetchOptions.headers = { ...fetchOptions.headers, Authorization: `Bearer ${apiKey}` };
     }
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", fetchOptions);
@@ -142,6 +375,10 @@ async function askAI(messages, systemPrompt) {
 
   return `Спасибо за вопрос: "${userMessage}"\n\nЯ помогу вам организовать информацию.`;
 }
+
+/* -----------------------
+   Icon component & icons
+   ----------------------- */
 const Icon = ({ d, size = 20, color = "currentColor", ...rest }) => (
   <svg
     width={size}
@@ -182,6 +419,9 @@ const icons = {
   menu: "M3 12h18M3 6h18M3 18h18",
 };
 
+/* -----------------------
+   NoteEditor component (uses text + annotations)
+   ----------------------- */
 function NoteEditor({
   note,
   categories,
@@ -189,14 +429,11 @@ function NoteEditor({
   onCancel,
   theme: t,
   s,
-  icons,
-  Icon,
   isTablet,
 }) {
   const [title, setTitle] = useState(note.title || "");
-  const [blocks, setBlocks] = useState(
-    note.blocks || [{ text: "", background: null, link: null }]
-  );
+  const [text, setText] = useState(note.text || "");
+  const [annotations, setAnnotations] = useState(note.annotations || []);
   const [selectedColor, setSelectedColor] = useState(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -204,6 +441,7 @@ function NoteEditor({
   const [tags, setTags] = useState(note.tags || []);
   const [categoryId, setCategoryId] = useState(note.categoryId || null);
   const textareaRef = useRef(null);
+  const prevTextRef = useRef(text);
 
   const colors = [
     { name: "Красный", value: "rgba(239, 68, 68, 0.3)" },
@@ -225,87 +463,81 @@ function NoteEditor({
   const removeTag = (tag) => {
     setTags(tags.filter((t) => t !== tag));
   };
+
+  // Helpers to compute plain text
+  const getPlainText = () => text;
+
+  // Handle text edits and adjust annotations positions
+  const handleTextChange = (e) => {
+    const newValue = e.target.value;
+    const oldValue = prevTextRef.current || "";
+    if (newValue === oldValue) {
+      setText(newValue);
+      prevTextRef.current = newValue;
+      return;
+    }
+
+    // find first diff index
+    let start = 0;
+    while (start < oldValue.length && start < newValue.length && oldValue[start] === newValue[start]) {
+      start++;
+    }
+    // find last diff
+    let oldEnd = oldValue.length - 1;
+    let newEnd = newValue.length - 1;
+    while (oldEnd >= start && newEnd >= start && oldValue[oldEnd] === newValue[newEnd]) {
+      oldEnd--;
+      newEnd--;
+    }
+
+    const removedLength = oldEnd >= start ? oldEnd - start + 1 : 0;
+    const insertedLength = newEnd >= start ? newEnd - start + 1 : 0;
+
+    const updatedAnnotations = adjustAnnotationsForEdit(annotations, start, removedLength, insertedLength);
+    setAnnotations(updatedAnnotations);
+    setText(newValue);
+    prevTextRef.current = newValue;
+  };
+
   const applyFormatting = (type, value) => {
-  const textarea = textareaRef.current;
-  if (!textarea) return;
-
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  if (start === end) return;
-
-  let charCount = 0;
-  let blockIndex = 0;
-  let startInBlock = 0;
-  let endInBlock = 0;
-
-  for (let i = 0; i < blocks.length; i++) {
-    const blockText = blocks[i].text;
-    if (charCount + blockText.length >= start) {
-      blockIndex = i;
-      startInBlock = start - charCount;
-      endInBlock = Math.min(blockText.length, end - charCount);
-      break;
-    }
-    charCount += blockText.length;
-  }
-
-  const block = blocks[blockIndex];
-  if (!block) return;
-
-  if (startInBlock >= 0 && endInBlock <= block.text.length) {
-    const newBlocks = [...blocks];
-    const beforeText = block.text.substring(0, startInBlock);
-    const selectedTextPart = block.text.substring(startInBlock, endInBlock);
-    const afterText = block.text.substring(endInBlock);
-
-    const newBlock = {
-      text: selectedTextPart,
-      background: type === "color" ? value : block.background,
-      link: type === "link" ? value : block.link,
-    };
-
-    const updatedBlocks = [];
-    if (beforeText) {
-      updatedBlocks.push({ ...block, text: beforeText, link: null, background: null });
-    }
-    updatedBlocks.push(newBlock);
-    if (afterText) {
-      updatedBlocks.push({ ...block, text: afterText, link: null, background: null });
-    }
-
-    newBlocks.splice(blockIndex, 1, ...updatedBlocks);
-    setBlocks(newBlocks);
-
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start === end) return;
+    const newAnns = applyAnnotation(annotations, start, end, type, value, text.length);
+    setAnnotations(newAnns);
+    setSelectedColor(type === "color" ? value : null);
     setTimeout(() => {
       try {
-        const newPos = start + selectedTextPart.length;
+        const newPos = end;
         textarea.selectionStart = newPos;
         textarea.selectionEnd = newPos;
         textarea.focus();
       } catch (_) {}
     }, 0);
-  }
-};
+  };
 
-const handleTextChange = (e) => {
-  const value = e.target.value;
-  const newBlocks = [...blocks];
-  if (newBlocks.length > 0) {
-    newBlocks[newBlocks.length - 1] = { ...newBlocks[newBlocks.length - 1], text: value };
-    setBlocks(newBlocks);
-  } else {
-    setBlocks([{ text: value, background: null, link: null }]);
-  }
-};
+  const handleApplyLink = () => {
+    if (!linkUrl.trim()) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start === end) return;
+    const newAnns = applyAnnotation(annotations, start, end, "link", linkUrl.trim(), text.length);
+    setAnnotations(newAnns);
+    setLinkUrl("");
+    setShowLinkInput(false);
+  };
 
-const getPlainText = () => {
-  return blocks.map((b) => b.text).join("");
-};
+  useEffect(() => {
+    saveDraft({ ...note, title, text, annotations, tags, categoryId });
+  }, [title, text, annotations, tags, categoryId, note]);
 
-useEffect(() => {
-  saveDraft({ ...note, title, blocks, tags, categoryId });
-}, [title, blocks, tags, categoryId, note]);
-    return (
+  const getFragments = () => getAnnotatedFragments(text, annotations);
+
+  return (
     <div style={{ maxWidth: "100%", margin: "0 auto" }}>
       <div>
         <div style={s.section}>
@@ -383,7 +615,17 @@ useEffect(() => {
         </button>
         <button
           style={s.btn("ghost")}
-          onClick={() => setSelectedColor(null)}
+          onClick={() => {
+            setSelectedColor(null);
+            // Remove color annotation from selection if any
+            const textarea = textareaRef.current;
+            if (!textarea) return;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            if (start === end) return;
+            const remaining = annotations.filter(a => !(a.type === "color" && a.start < end && a.end > start));
+            setAnnotations(normalizeAnnotations(remaining));
+          }}
         >
           ✖ Сбросить
         </button>
@@ -399,13 +641,7 @@ useEffect(() => {
           />
           <button
             style={s.btn("primary")}
-            onClick={() => {
-              if (linkUrl.trim()) {
-                applyFormatting("link", linkUrl.trim());
-                setLinkUrl("");
-                setShowLinkInput(false);
-              }
-            }}
+            onClick={handleApplyLink}
           >
             Применить
           </button>
@@ -429,23 +665,39 @@ useEffect(() => {
             padding: "12px 14px",
           }}
         >
-          {blocks.map((block, index) => {
+          {getFragments().map((frag, index) => {
             let style = {};
-            if (block.background) {
-              style.background = block.background;
+            const colorAnn = frag.annotations.find(a => a.type === "color");
+            const linkAnn = frag.annotations.find(a => a.type === "link");
+            if (colorAnn) {
+              style.background = colorAnn.value;
               style.padding = "2px 4px";
               style.borderRadius = 4;
             }
-            if (block.link) {
+            if (linkAnn) {
               style.textDecoration = "underline";
               style.cursor = "pointer";
               style.color = t.accent;
             }
-            return (
+            const content = (
               <span key={index} style={style}>
-                {block.text}
+                {frag.text}
               </span>
             );
+            if (linkAnn) {
+              return (
+                <a
+                  key={index}
+                  href={linkAnn.value}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: "none" }}
+                >
+                  {content}
+                </a>
+              );
+            }
+            return content;
           })}
         </div>
         <textarea
@@ -510,7 +762,8 @@ useEffect(() => {
             onSave({
               ...note,
               title,
-              blocks: blocks.filter((b) => b.text.trim() !== ""),
+              text: text,
+              annotations: normalizeAnnotations(annotations),
               tags,
               categoryId,
             })
@@ -521,7 +774,11 @@ useEffect(() => {
       </div>
     </div>
   );
-          }
+}
+
+/* -----------------------
+   NoteDetail component (renders text + annotations)
+   ----------------------- */
 function NoteDetail({
   note,
   categories,
@@ -543,9 +800,8 @@ function NoteDetail({
   const [searchColor, setSearchColor] = useState(null);
   const contentRef = useRef(null);
   const cat = categories.find((c) => c.id === note.categoryId);
-  const blocks = note.blocks || [
-    { text: note.body || "", background: null, link: null },
-  ];
+  const text = note.text || "";
+  const annotations = note.annotations || [];
 
   useEffect(() => {
     if (contentRef.current) {
@@ -561,9 +817,9 @@ function NoteDetail({
     }
   };
 
-  const highlightText = (text, search) => {
-    if (!search) return text;
-    const parts = text.split(new RegExp(`(${search})`, "gi"));
+  const highlightText = (textSegment, search) => {
+    if (!search) return textSegment;
+    const parts = textSegment.split(new RegExp(`(${search})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === search.toLowerCase() ? (
         <mark key={i} style={{ background: "#ffeb3b", color: "#000" }}>
@@ -575,14 +831,15 @@ function NoteDetail({
     );
   };
 
-  const getFilteredBlocks = () => {
+  const getFilteredFragments = () => {
+    const fragments = getAnnotatedFragments(text, annotations);
     if (searchMode === "color" && searchColor) {
-      return blocks.filter((b) => b.background === searchColor);
+      return fragments.filter((f) => f.annotations.some(a => a.type === "color" && a.value === searchColor));
     }
     if (searchMode === "link") {
-      return blocks.filter((b) => b.link);
+      return fragments.filter((f) => f.annotations.some(a => a.type === "link"));
     }
-    return blocks;
+    return fragments;
   };
 
   const colors = [
@@ -728,65 +985,47 @@ function NoteDetail({
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          {getFilteredBlocks().length === 0 ? (
+          {getFilteredFragments().length === 0 ? (
             <div style={s.empty}>Нет блоков, соответствующих фильтру</div>
           ) : (
-            getFilteredBlocks().map((block, index) => (
-              <div
-                key={index}
-                style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}
-              >
-                {block.link ? (
-                  <a
-                    href={block.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      background: block.background || "transparent",
-                      padding: "2px 4px",
-                      borderRadius: 4,
-                      color: t.accent,
-                      textDecoration: "underline",
-                    }}
-                  >
-                    {highlightText(block.text, searchText)}
-                  </a>
-                ) : (
-                  <span
-                    style={{
-                      background: block.background || "transparent",
-                      padding: "2px 4px",
-                      borderRadius: 4,
-                      color: t.text,
-                    }}
-                  >
-                    {highlightText(block.text, searchText)}
-                  </span>
-                )}
-                {block.background && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: t.textMuted,
-                      marginLeft: 8,
-                    }}
-                  >
-                    🖍️
-                  </span>
-                )}
-                {block.link && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: t.textMuted,
-                      marginLeft: 8,
-                    }}
-                  >
-                    🔗
-                  </span>
-                )}
-              </div>
-            ))
+            getFilteredFragments().map((frag, index) => {
+              const colorAnn = frag.annotations.find(a => a.type === "color");
+              const linkAnn = frag.annotations.find(a => a.type === "link");
+              const fragmentStyle = {
+                background: colorAnn ? colorAnn.value : "transparent",
+                padding: colorAnn ? "2px 4px" : undefined,
+                borderRadius: colorAnn ? 4 : undefined,
+                color: t.text,
+                textDecoration: linkAnn ? "underline" : "none",
+                cursor: linkAnn ? "pointer" : undefined,
+              };
+              const content = (
+                <span key={index} style={fragmentStyle}>
+                  {highlightText(frag.text, searchText)}
+                </span>
+              );
+              return (
+                <div key={index} style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>
+                  {linkAnn ? (
+                    <a href={linkAnn.value} target="_blank" rel="noopener noreferrer" style={{ color: t.accent }}>
+                      {content}
+                    </a>
+                  ) : (
+                    content
+                  )}
+                  {colorAnn && (
+                    <span style={{ fontSize: 10, color: t.textMuted, marginLeft: 8 }}>
+                      🖍️
+                    </span>
+                  )}
+                  {linkAnn && (
+                    <span style={{ fontSize: 10, color: t.textMuted, marginLeft: 8 }}>
+                      🔗
+                    </span>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </div>
@@ -845,7 +1084,11 @@ function NoteDetail({
       </div>
     </div>
   );
-                }
+}
+
+/* -----------------------
+   Main App
+   ----------------------- */
 export default function SmartNotesApp() {
   const [data, setData] = useState(() => loadData());
   const [theme, setTheme] = useState(data.theme || "light");
@@ -940,7 +1183,7 @@ export default function SmartNotesApp() {
 
   useEffect(() => {
     const draft = loadDraft();
-    if (draft && (draft.title || draft.body || draft.blocks)) {
+    if (draft && (draft.title || draft.text || (draft.annotations && draft.annotations.length))) {
       setDraftExists(true);
     }
   }, []);
@@ -965,9 +1208,9 @@ export default function SmartNotesApp() {
             setDraftExists(true);
           } else if (
             activeNote.title ||
-            activeNote.body ||
-            (activeNote.blocks &&
-              activeNote.blocks.some((b) => b.text && b.text.trim()))
+            activeNote.text ||
+            (activeNote.annotations &&
+              activeNote.annotations.some((b) => b && b.start < b.end))
           ) {
             const newNote = {
               ...activeNote,
@@ -983,9 +1226,9 @@ export default function SmartNotesApp() {
           }
         } else if (
           activeNote.title ||
-          activeNote.body ||
-          (activeNote.blocks &&
-            activeNote.blocks.some((b) => b.text && b.text.trim()))
+          activeNote.text ||
+          (activeNote.annotations &&
+            activeNote.annotations.some((b) => b && b.start < b.end))
         ) {
           setSaveStatus("saved");
           setDraftExists(true);
@@ -1010,9 +1253,9 @@ export default function SmartNotesApp() {
         view === "edit" &&
         activeNote &&
         (activeNote.title ||
-          activeNote.body ||
-          (activeNote.blocks &&
-            activeNote.blocks.some((b) => b.text && b.text.trim())))
+          activeNote.text ||
+          (activeNote.annotations &&
+            activeNote.annotations.some((b) => b && b.start < b.end)))
       ) {
         saveDraft(activeNote);
         setDraftExists(true);
@@ -1040,9 +1283,9 @@ export default function SmartNotesApp() {
         view === "edit" &&
         activeNote &&
         (activeNote.title ||
-          activeNote.body ||
-          (activeNote.blocks &&
-            activeNote.blocks.some((b) => b.text && b.text.trim())))
+          activeNote.text ||
+          (activeNote.annotations &&
+            activeNote.annotations.some((b) => b && b.start < b.end)))
       ) {
         saveDraft(activeNote);
         e.preventDefault();
@@ -1052,480 +1295,483 @@ export default function SmartNotesApp() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [activeNote, view]);
+
   const restoreDraft = () => {
-  const draft = loadDraft();
-  if (draft) {
-    setActiveNote(draft);
-    setView("edit");
-    setDraftExists(false);
-    clearDraft();
-    showNotification("🔄 Черновик восстановлен");
-  }
-};
-
-const discardDraft = () => {
-  clearDraft();
-  setDraftExists(false);
-  showNotification("🗑️ Черновик удален");
-};
-
-const showNotification = (message) => {
-  const notification = document.createElement("div");
-  notification.style.cssText = `
-    position: fixed;
-    bottom: ${isMobile ? "80px" : "100px"};
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 12px 24px;
-    background: ${t.surface};
-    color: ${t.text};
-    border: 1px solid ${t.border};
-    border-radius: 8px;
-    font-size: 14px;
-    z-index: 9999;
-    animation: slideUp 0.3s ease-out;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    max-width: 90%;
-    text-align: center;
-  `;
-  notification.textContent = message;
-  document.body.appendChild(notification);
-  setTimeout(() => {
-    notification.style.opacity = "0";
-    notification.style.transition = "opacity 0.3s";
-    setTimeout(() => notification.remove(), 300);
-  }, 3000);
-};
-
-const addCategory = () => {
-  if (!newCategoryName.trim()) return;
-  const category = {
-    id: Date.now(),
-    name: newCategoryName,
-    color: newCategoryColor,
-  };
-  persist({ ...data, categories: [...data.categories, category] });
-  setNewCategoryName("");
-  setNewCategoryColor("#6366F1");
-  setShowCategoryModal(false);
-  showNotification("✅ Категория создана");
-};
-
-const deleteCategory = (id) => {
-  const notes = data.notes.map((n) =>
-    n.categoryId === id ? { ...n, categoryId: null } : n
-  );
-  persist({
-    ...data,
-    categories: data.categories.filter((c) => c.id !== id),
-    notes,
-  });
-  showNotification("🗑️ Категория удалена");
-};
-
-const newNote = () => {
-  const draft = loadDraft();
-  if (draft && (draft.title || draft.body || draft.blocks)) {
-    if (window.confirm("У вас есть несохраненный черновик. Использовать его?")) {
+    const draft = loadDraft();
+    if (draft) {
       setActiveNote(draft);
       setView("edit");
-      clearDraft();
       setDraftExists(false);
-      return;
+      clearDraft();
+      showNotification("🔄 Черновик восстановлен");
     }
-  }
-  setActiveNote({
-    id: Date.now(),
-    title: "",
-    blocks: [{ text: "", background: null, link: null }],
-    tags: [],
-    categoryId: activeCategory,
-    createdAt: new Date().toISOString(),
-  });
-  setView("edit");
-  clearDraft();
-  setDraftExists(false);
-};
+  };
 
-const saveNote = (note) => {
-  const exists = data.notes.find((n) => n.id === note.id);
-  const notes = exists
-    ? data.notes.map((n) => (n.id === note.id ? note : n))
-    : [note, ...data.notes];
-  persist({ ...data, notes });
-  clearDraft();
-  setDraftExists(false);
-  setView("list");
-  showNotification("✅ Заметка сохранена");
-};
+  const discardDraft = () => {
+    clearDraft();
+    setDraftExists(false);
+    showNotification("🗑️ Черновик удален");
+  };
 
-const deleteNote = (id) => {
-  setShowDeleteConfirm(null);
-  persist({ ...data, notes: data.notes.filter((n) => n.id !== id) });
-  clearDraft();
-  setDraftExists(false);
-  setView("list");
-  showNotification("🗑️ Заметка удалена");
-};
+  const showNotification = (message) => {
+    const notification = document.createElement("div");
+    notification.style.cssText = `
+      position: fixed;
+      bottom: ${isMobile ? "80px" : "100px"};
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      background: ${t.surface};
+      color: ${t.text};
+      border: 1px solid ${t.border};
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 9999;
+      animation: slideUp 0.3s ease-out;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      max-width: 90%;
+      text-align: center;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+      notification.style.opacity = "0";
+      notification.style.transition = "opacity 0.3s";
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  };
 
-const filtered = data.notes.filter((n) => {
-  const tags = n.tags || [];
-  const matchSearch =
-    (n.title && n.title.toLowerCase().includes(search.toLowerCase())) ||
-    (n.blocks &&
-      n.blocks.some((b) =>
-        b.text && b.text.toLowerCase().includes(search.toLowerCase())
-      )) ||
-    tags.some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
-  const matchCategory =
-    activeCategory === null || n.categoryId === activeCategory;
-  return matchSearch && matchCategory;
-});
+  const addCategory = () => {
+    if (!newCategoryName.trim()) return;
+    const category = {
+      id: Date.now(),
+      name: newCategoryName,
+      color: newCategoryColor,
+    };
+    persist({ ...data, categories: [...data.categories, category] });
+    setNewCategoryName("");
+    setNewCategoryColor("#6366F1");
+    setShowCategoryModal(false);
+    showNotification("✅ Категория создана");
+  };
 
-const notesContext = filtered
-  .slice(0, 20)
-  .map((n) => {
-    const text = n.blocks
-      ? n.blocks.map((b) => b.text).join(" ")
-      : n.body || "";
-    return `[${n.title}]: ${text.slice(0, 300)}`;
-  })
-  .join("\n\n");
-
-const libraryContext = data.library
-  .slice(0, 10)
-  .map((item) => `[${item.name}]: ${item.content.slice(0, 500)}`)
-  .join("\n\n");
-
-// ✅ aiSummarize вынесена на уровень компонента
-const aiSummarize = async (note) => {
-  setAiLoading(true);
-  try {
-    const reply = await askAI(
-      [
-        {
-          role: "user",
-          content: `Сделай краткое резюме этой заметки и предложи 3 вопроса для самопроверки:\n\n${note.title}\n${
-            note.blocks ? note.blocks.map((b) => b.text).join(" ") : note.body
-          }`,
-        },
-      ],
-      "Ты помощник для учёбы. Отвечай на русском."
+  const deleteCategory = (id) => {
+    const notes = data.notes.map((n) =>
+      n.categoryId === id ? { ...n, categoryId: null } : n
     );
+    persist({
+      ...data,
+      categories: data.categories.filter((c) => c.id !== id),
+      notes,
+    });
+    showNotification("🗑️ Категория удалена");
+  };
 
-    const updatedNote = { ...note, aiSummary: reply };
-    setActiveNote(updatedNote);
-
-    const exists = data.notes.find((n) => n.id === note.id);
-    if (exists) {
-      const notes = data.notes.map((n) =>
-        n.id === note.id ? updatedNote : n
-      );
-      persist({ ...data, notes });
-    } else {
-      persist({ ...data, notes: [updatedNote, ...data.notes] });
+  const newNote = () => {
+    const draft = loadDraft();
+    if (draft && (draft.title || draft.text || draft.annotations)) {
+      if (window.confirm("У вас есть несохраненный черновик. Использовать его?")) {
+        setActiveNote(draft);
+        setView("edit");
+        clearDraft();
+        setDraftExists(false);
+        return;
+      }
     }
-  } catch (err) {
-    console.error("aiSummarize error:", err);
-  } finally {
-    setAiLoading(false);
-  }
-};
+    setActiveNote({
+      id: Date.now(),
+      title: "",
+      text: "",
+      annotations: [],
+      tags: [],
+      categoryId: activeCategory,
+      createdAt: new Date().toISOString(),
+    });
+    setView("edit");
+    clearDraft();
+    setDraftExists(false);
+  };
+
+  const saveNote = (note) => {
+    const exists = data.notes.find((n) => n.id === note.id);
+    const normalizedNote = {
+      ...note,
+      annotations: normalizeAnnotations(note.annotations || []),
+      text: note.text || "",
+    };
+    const notes = exists
+      ? data.notes.map((n) => (n.id === note.id ? normalizedNote : n))
+      : [normalizedNote, ...data.notes];
+    persist({ ...data, notes });
+    clearDraft();
+    setDraftExists(false);
+    setView("list");
+    showNotification("✅ Заметка сохранена");
+  };
+
+  const deleteNote = (id) => {
+    setShowDeleteConfirm(null);
+    persist({ ...data, notes: data.notes.filter((n) => n.id !== id) });
+    clearDraft();
+    setDraftExists(false);
+    setView("list");
+    showNotification("🗑️ Заметка удалена");
+  };
+
+  const filtered = data.notes.filter((n) => {
+    const tags = n.tags || [];
+    const q = search.toLowerCase();
+    const matchSearch =
+      (n.title && n.title.toLowerCase().includes(q)) ||
+      (n.text && n.text.toLowerCase().includes(q)) ||
+      tags.some((tag) => tag.toLowerCase().includes(q));
+    const matchCategory =
+      activeCategory === null || n.categoryId === activeCategory;
+    return matchSearch && matchCategory;
+  });
+
+  const notesContext = filtered
+    .slice(0, 20)
+    .map((n) => {
+      const text = n.text || "";
+      return `[${n.title}]: ${text.slice(0, 300)}`;
+    })
+    .join("\n\n");
+
+  const libraryContext = data.library
+    .slice(0, 10)
+    .map((item) => `[${item.name}]: ${item.content.slice(0, 500)}`)
+    .join("\n\n");
+
+  // aiSummarize — uses note.text
+  const aiSummarize = async (note) => {
+    setAiLoading(true);
+    try {
+      const reply = await askAI(
+        [
+          {
+            role: "user",
+            content: `Сделай краткое резюме этой заметки и предложи 3 вопроса для самопроверки:\n\n${note.title}\n${note.text || ""}`,
+          },
+        ],
+        "Ты помощник для учёбы. Отвечай на русском."
+      );
+
+      const updatedNote = { ...note, aiSummary: reply };
+      setActiveNote(updatedNote);
+
+      const exists = data.notes.find((n) => n.id === note.id);
+      if (exists) {
+        const notes = data.notes.map((n) =>
+          n.id === note.id ? updatedNote : n
+        );
+        persist({ ...data, notes });
+      } else {
+        persist({ ...data, notes: [updatedNote, ...data.notes] });
+      }
+    } catch (err) {
+      console.error("aiSummarize error:", err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const s = useMemo(() => {
-  const fontSize = {
-    xs: isMobile ? 10 : 12,
-    sm: isMobile ? 13 : 15,
-    md: isMobile ? 15 : 17,
-    lg: isMobile ? 18 : 22,
-    xl: isMobile ? 20 : 26,
-  };
+    const fontSize = {
+      xs: isMobile ? 10 : 12,
+      sm: isMobile ? 13 : 15,
+      md: isMobile ? 15 : 17,
+      lg: isMobile ? 18 : 22,
+      xl: isMobile ? 20 : 26,
+    };
 
-  return {
-    app: {
-      minHeight: "100vh",
-      background: t.bg,
-      color: t.text,
-      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
-      display: "flex",
-      flexDirection: "column",
-      maxWidth: maxWidth,
-      margin: "0 auto",
-      position: "relative",
-      transition: "background 0.3s, color 0.3s",
-      width: "100%",
-      height: "100vh",
-      overflow: "hidden",
-    },
-    header: {
-      padding: headerPadding,
-      borderBottom: `1px solid ${t.border}`,
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      background: t.surface,
-      position: "sticky",
-      top: 0,
-      zIndex: 10,
-      transition: "background 0.3s, border-color 0.3s",
-      minHeight: isMobile ? (isLandscape ? "60px" : "56px") : "72px",
-    },
-    headerTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: 700,
-      letterSpacing: "-0.3px",
-      flex: 1,
-      color: theme === "dark" ? "transparent" : t.accent,
-      background: theme === "dark"
-        ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})`
-        : "none",
-      WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
-      WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
-    },
-    content: {
-      flex: 1,
-      padding: contentPadding,
-      overflowY: "auto",
-      animation: "fadeIn 0.4s ease-in",
-      overflowX: "hidden",
-      paddingBottom: bottomNavPadding,
-    },
-    card: {
-      background: t.card,
-      borderRadius: 12,
-      padding: cardPadding,
-      marginBottom: 12,
-      border: `1px solid ${t.border}`,
-      cursor: "pointer",
-      transition: "all 0.3s",
-      animation: "slideUp 0.4s ease-out",
-    },
-    cardTitle: {
-      fontSize: fontSize.md,
-      fontWeight: 600,
-      marginBottom: 6,
-      color: t.text,
-    },
-    cardText: {
-      fontSize: fontSize.sm,
-      color: t.textMuted,
-      lineHeight: 1.5,
-      display: "-webkit-box",
-      WebkitLineClamp: 2,
-      WebkitBoxOrient: "vertical",
-      overflow: "hidden",
-    },
-    btn: (variant = "primary") => ({
-      padding: isMobile
-        ? isLandscape
-          ? "12px 20px"
-          : "10px 16px"
-        : "14px 28px",
-      borderRadius: 8,
-      border: "none",
-      cursor: "pointer",
-      fontWeight: 600,
-      fontSize: isMobile ? fontSize.sm : fontSize.md,
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      transition: "all 0.2s",
-      fontFamily: "inherit",
-      ...(variant === "primary"
-        ? { background: t.accent, color: "#fff" }
-        : variant === "danger"
-        ? { background: `${t.danger}22`, color: t.danger }
-        : variant === "ghost"
-        ? { background: "transparent", color: t.textMuted }
-        : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
-    }),
-    input: {
-      width: "100%",
-      background: t.card,
-      border: `1px solid ${t.border}`,
-      borderRadius: 8,
-      padding: isMobile ? "10px 12px" : "12px 16px",
-      color: t.text,
-      fontSize: fontSize.sm,
-      outline: "none",
-      boxSizing: "border-box",
-      fontFamily: "inherit",
-      transition: "border-color 0.2s",
-    },
-    textarea: {
-      width: "100%",
-      background: t.card,
-      border: `1px solid ${t.border}`,
-      borderRadius: 8,
-      padding: isMobile ? "10px 12px" : "12px 16px",
-      color: t.text,
-      fontSize: fontSize.sm,
-      outline: "none",
-      resize: "vertical",
-      minHeight: isMobile ? "120px" : "200px",
-      lineHeight: 1.6,
-      boxSizing: "border-box",
-      fontFamily: "inherit",
-      transition: "border-color 0.2s",
-    },
-    label: {
-      fontSize: fontSize.xs,
-      color: t.textMuted,
-      marginBottom: 6,
-      display: "block",
-      fontWeight: 500,
-    },
-    row: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-    },
-    section: {
-      marginBottom: 20,
-    },
-    bubble: (isUser) => ({
-      maxWidth: "82%",
-      padding: isMobile ? "10px 14px" : "12px 18px",
-      borderRadius: isUser
-        ? "16px 16px 4px 16px"
-        : "16px 16px 16px 4px",
-      background: isUser ? t.accent : t.card,
-      color: isUser ? "#fff" : t.text,
-      fontSize: fontSize.sm,
-      lineHeight: 1.5,
-      border: isUser ? "none" : `1px solid ${t.border}`,
-      alignSelf: isUser ? "flex-end" : "flex-start",
-      whiteSpace: "pre-wrap",
-      animation: "fadeIn 0.3s ease-in",
-      wordBreak: "break-word",
-    }),
-    empty: {
-      textAlign: "center",
-      padding: isMobile ? "60px 20px" : "80px 40px",
-      color: t.textMuted,
-    },
-    categoryBadge: (color) => ({
-      display: "inline-block",
-      background: `${color}33`,
-      color: color,
-      borderRadius: 6,
-      padding: "4px 10px",
-      fontSize: fontSize.xs,
-      fontWeight: 500,
-      marginRight: 6,
-      marginBottom: 8,
-      cursor: "pointer",
-      border: `1px solid ${color}66`,
-    }),
-    modal: {
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "rgba(0,0,0,0.6)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 999,
-      animation: "fadeIn 0.2s ease-out",
-      padding: "20px",
-    },
-    modalContent: {
-      background: t.card,
-      borderRadius: 12,
-      padding: isMobile ? "20px" : "28px",
-      width: "90%",
-      maxWidth: isMobile ? "400px" : "600px",
-      border: `1px solid ${t.border}`,
-      animation: "slideUp 0.3s ease-out",
-      maxHeight: "90vh",
-      overflowY: "auto",
-    },
-    bottomNav: {
-      position: "fixed",
-      bottom: 0,
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: "100%",
-      maxWidth: maxWidth,
-      background: t.surface,
-      borderTop: `2px solid ${t.border}`,
-      display: "flex",
-      padding: isMobile ? "8px 0" : "12px 0",
-      justifyContent: "space-around",
-      zIndex: 10,
-      transition: "background 0.3s, border-color 0.3s",
-      backdropFilter: "blur(10px)",
-    },
-    navButton: (active) => ({
-      flex: "1",
-      padding: isMobile ? "8px 4px" : "12px 8px",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 2,
-      background: "none",
-      border: "none",
-      color: active ? t.accent : t.textMuted,
-      fontSize: isMobile ? 10 : 12,
-      fontWeight: active ? 700 : 500,
-      cursor: "pointer",
-      transition: "all 0.3s",
-      position: "relative",
-      borderTop: active ? `3px solid ${t.accent}` : "3px solid transparent",
-    }),
-    navIcon: { fontSize: isMobile ? 20 : 24 },
-    navLabel: { fontSize: isMobile ? 9 : 11, marginTop: 2 },
-  };
-}, [
-  t,
-  theme,
-  isMobile,
-  isLandscape,
-  maxWidth,
-  headerPadding,
-  contentPadding,
-  cardPadding,
-  bottomNavPadding,
-]);
-
-const SaveIndicator = () => {
-  if (saveStatus === "idle" && !draftExists) return null;
-  let statusText = "";
-  let statusColor = t.textMuted;
-  if (saveStatus === "saving") {
-    statusText = "💾 Сохранение...";
-    statusColor = t.warning;
-  } else if (saveStatus === "saved") {
-    statusText = "✅ Сохранено";
-    statusColor = t.success;
-  } else if (draftExists && view !== "edit") {
-    statusText = "📝 Есть черновик";
-    statusColor = t.accent;
-  }
-  return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: isMobile ? 80 : 100,
-        right: 20,
-        padding: "8px 16px",
-        borderRadius: 8,
+    return {
+      app: {
+        minHeight: "100vh",
+        background: t.bg,
+        color: t.text,
+        fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
+        display: "flex",
+        flexDirection: "column",
+        maxWidth: maxWidth,
+        margin: "0 auto",
+        position: "relative",
+        transition: "background 0.3s, color 0.3s",
+        width: "100%",
+        height: "100vh",
+        overflow: "hidden",
+      },
+      header: {
+        padding: headerPadding,
+        borderBottom: `1px solid ${t.border}`,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
         background: t.surface,
-        border: `1px solid ${statusColor}`,
-        color: statusColor,
-        fontSize: 12,
-        zIndex: 1000,
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        transition: "background 0.3s, border-color 0.3s",
+        minHeight: isMobile ? (isLandscape ? "60px" : "56px") : "72px",
+      },
+      headerTitle: {
+        fontSize: fontSize.lg,
+        fontWeight: 700,
+        letterSpacing: "-0.3px",
+        flex: 1,
+        color: theme === "dark" ? "transparent" : t.accent,
+        background: theme === "dark"
+          ? `linear-gradient(135deg, ${t.accent}, ${t.accent2})`
+          : "none",
+        WebkitBackgroundClip: theme === "dark" ? "text" : "unset",
+        WebkitTextFillColor: theme === "dark" ? "transparent" : "unset",
+      },
+      content: {
+        flex: 1,
+        padding: contentPadding,
+        overflowY: "auto",
+        animation: "fadeIn 0.4s ease-in",
+        overflowX: "hidden",
+        paddingBottom: bottomNavPadding,
+      },
+      card: {
+        background: t.card,
+        borderRadius: 12,
+        padding: cardPadding,
+        marginBottom: 12,
+        border: `1px solid ${t.border}`,
+        cursor: "pointer",
         transition: "all 0.3s",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-        maxWidth: "90%",
-      }}
-    >
-      {statusText}
-    </div>
-  );
-};
-    const renderNotes = () => {
+        animation: "slideUp 0.4s ease-out",
+      },
+      cardTitle: {
+        fontSize: fontSize.md,
+        fontWeight: 600,
+        marginBottom: 6,
+        color: t.text,
+      },
+      cardText: {
+        fontSize: fontSize.sm,
+        color: t.textMuted,
+        lineHeight: 1.5,
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+      },
+      btn: (variant = "primary") => ({
+        padding: isMobile
+          ? isLandscape
+            ? "12px 20px"
+            : "10px 16px"
+          : "14px 28px",
+        borderRadius: 8,
+        border: "none",
+        cursor: "pointer",
+        fontWeight: 600,
+        fontSize: isMobile ? fontSize.sm : fontSize.md,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "all 0.2s",
+        fontFamily: "inherit",
+        ...(variant === "primary"
+          ? { background: t.accent, color: "#fff" }
+          : variant === "danger"
+          ? { background: `${t.danger}22`, color: t.danger }
+          : variant === "ghost"
+          ? { background: "transparent", color: t.textMuted }
+          : { background: t.card, color: t.text, border: `1px solid ${t.border}` }),
+      }),
+      input: {
+        width: "100%",
+        background: t.card,
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+        padding: isMobile ? "10px 12px" : "12px 16px",
+        color: t.text,
+        fontSize: fontSize.sm,
+        outline: "none",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        transition: "border-color 0.2s",
+      },
+      textarea: {
+        width: "100%",
+        background: t.card,
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+        padding: isMobile ? "10px 12px" : "12px 16px",
+        color: t.text,
+        fontSize: fontSize.sm,
+        outline: "none",
+        resize: "vertical",
+        minHeight: isMobile ? "120px" : "200px",
+        lineHeight: 1.6,
+        boxSizing: "border-box",
+        fontFamily: "inherit",
+        transition: "border-color 0.2s",
+      },
+      label: {
+        fontSize: fontSize.xs,
+        color: t.textMuted,
+        marginBottom: 6,
+        display: "block",
+        fontWeight: 500,
+      },
+      row: {
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+      },
+      section: {
+        marginBottom: 20,
+      },
+      bubble: (isUser) => ({
+        maxWidth: "82%",
+        padding: isMobile ? "10px 14px" : "12px 18px",
+        borderRadius: isUser
+          ? "16px 16px 4px 16px"
+          : "16px 16px 16px 4px",
+        background: isUser ? t.accent : t.card,
+        color: isUser ? "#fff" : t.text,
+        fontSize: fontSize.sm,
+        lineHeight: 1.5,
+        border: isUser ? "none" : `1px solid ${t.border}`,
+        alignSelf: isUser ? "flex-end" : "flex-start",
+        whiteSpace: "pre-wrap",
+        animation: "fadeIn 0.3s ease-in",
+        wordBreak: "break-word",
+      }),
+      empty: {
+        textAlign: "center",
+        padding: isMobile ? "60px 20px" : "80px 40px",
+        color: t.textMuted,
+      },
+      categoryBadge: (color) => ({
+        display: "inline-block",
+        background: `${color}33`,
+        color: color,
+        borderRadius: 6,
+        padding: "4px 10px",
+        fontSize: fontSize.xs,
+        fontWeight: 500,
+        marginRight: 6,
+        marginBottom: 8,
+        cursor: "pointer",
+        border: `1px solid ${color}66`,
+      }),
+      modal: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 999,
+        animation: "fadeIn 0.2s ease-out",
+        padding: "20px",
+      },
+      modalContent: {
+        background: t.card,
+        borderRadius: 12,
+        padding: isMobile ? "20px" : "28px",
+        width: "90%",
+        maxWidth: isMobile ? "400px" : "600px",
+        border: `1px solid ${t.border}`,
+        animation: "slideUp 0.3s ease-out",
+        maxHeight: "90vh",
+        overflowY: "auto",
+      },
+      bottomNav: {
+        position: "fixed",
+        bottom: 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: maxWidth,
+        background: t.surface,
+        borderTop: `2px solid ${t.border}`,
+        display: "flex",
+        padding: isMobile ? "8px 0" : "12px 0",
+        justifyContent: "space-around",
+        zIndex: 10,
+        transition: "background 0.3s, border-color 0.3s",
+        backdropFilter: "blur(10px)",
+      },
+      navButton: (active) => ({
+        flex: "1",
+        padding: isMobile ? "8px 4px" : "12px 8px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 2,
+        background: "none",
+        border: "none",
+        color: active ? t.accent : t.textMuted,
+        fontSize: isMobile ? 10 : 12,
+        fontWeight: active ? 700 : 500,
+        cursor: "pointer",
+        transition: "all 0.3s",
+        position: "relative",
+        borderTop: active ? `3px solid ${t.accent}` : "3px solid transparent",
+      }),
+      navIcon: { fontSize: isMobile ? 20 : 24 },
+      navLabel: { fontSize: isMobile ? 9 : 11, marginTop: 2 },
+    };
+  }, [
+    t,
+    theme,
+    isMobile,
+    isLandscape,
+    maxWidth,
+    headerPadding,
+    contentPadding,
+    cardPadding,
+    bottomNavPadding,
+  ]);
+
+  const SaveIndicator = () => {
+    if (saveStatus === "idle" && !draftExists) return null;
+    let statusText = "";
+    let statusColor = t.textMuted;
+    if (saveStatus === "saving") {
+      statusText = "💾 Сохранение...";
+      statusColor = t.warning;
+    } else if (saveStatus === "saved") {
+      statusText = "✅ Сохранено";
+      statusColor = t.success;
+    } else if (draftExists && view !== "edit") {
+      statusText = "📝 Есть черновик";
+      statusColor = t.accent;
+    }
+    return (
+      <div
+        style={{
+          position: "fixed",
+          bottom: isMobile ? 80 : 100,
+          right: 20,
+          padding: "8px 16px",
+          borderRadius: 8,
+          background: t.surface,
+          border: `1px solid ${statusColor}`,
+          color: statusColor,
+          fontSize: 12,
+          zIndex: 1000,
+          transition: "all 0.3s",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          maxWidth: "90%",
+        }}
+      >
+        {statusText}
+      </div>
+    );
+  };
+
+  const renderNotes = () => {
     if (view === "edit") {
       return (
         <NoteEditor
@@ -1539,8 +1785,6 @@ const SaveIndicator = () => {
           }}
           theme={t}
           s={s}
-          icons={icons}
-          Icon={Icon}
           isTablet={isTablet}
         />
       );
@@ -1780,9 +2024,7 @@ const SaveIndicator = () => {
                     {note.title || "Без названия"}
                   </div>
                   <div style={s.cardText}>
-                    {note.blocks
-                      ? note.blocks.map((b) => b.text).join(" ")
-                      : note.body}
+                    {note.text ? note.text.slice(0, 200) : ""}
                   </div>
                   <div style={{ marginTop: 8 }}>
                     {cat && (
@@ -1843,10 +2085,10 @@ ${notesContext || "Заметок пока нет."}
 ${libraryContext || "Библиотека пуста."}`;
 
     const sendChat = async () => {
-      const text = chatInput.trim();
-      if (!text || chatLoading) return;
+      const textMsg = chatInput.trim();
+      if (!textMsg || chatLoading) return;
       setChatInput("");
-      const userMsg = { role: "user", content: text };
+      const userMsg = { role: "user", content: textMsg };
       const history = [...data.chatHistory, userMsg];
       persist({ ...data, chatHistory: history });
       setChatLoading(true);
@@ -1870,6 +2112,13 @@ ${libraryContext || "Библиотека пуста."}`;
       }
       setChatLoading(false);
     };
+
+    useEffect(() => {
+      // auto-scroll chat to bottom when messages change
+      if (chatRef.current) {
+        chatRef.current.scrollTop = chatRef.current.scrollHeight;
+      }
+    }, [data.chatHistory, chatLoading]);
 
     return (
       <div
@@ -1985,11 +2234,7 @@ ${libraryContext || "Библиотека пуста."}`;
       showNotification("🗑️ Файл удален из библиотеки");
     };
 
-    const filteredLibraryItems = data.library.filter(
-      (item) =>
-        item.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-        item.content.toLowerCase().includes(librarySearch.toLowerCase())
-    );
+    const filteredLibraryItems = filteredLibrary;
 
     return (
       <div>
@@ -2114,6 +2359,7 @@ ${libraryContext || "Библиотека пуста."}`;
       </div>
     );
   };
+
   const tabs = [
     { id: "notes", label: "Заметки", icon: icons.note },
     { id: "ai", label: "ИИ", icon: icons.ai },
@@ -2144,9 +2390,6 @@ ${libraryContext || "Библиотека пуста."}`;
         html, body {
           width: 100%;
           height: 100%;
-          -webkit-touch-callout: none;
-          -webkit-user-select: none;
-          user-select: none;
         }
         body {
           font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
@@ -2203,19 +2446,19 @@ ${libraryContext || "Библиотека пуста."}`;
 
       {(view === "list" || tab !== "notes") && (
         <div style={s.bottomNav}>
-          {tabs.map((t) => (
+          {tabs.map((tItem) => (
             <button
-              key={t.id}
-              style={s.navButton(tab === t.id)}
+              key={tItem.id}
+              style={s.navButton(tab === tItem.id)}
               onClick={() => {
-                setTab(t.id);
-                if (t.id === "notes") setView("list");
+                setTab(tItem.id);
+                if (tItem.id === "notes") setView("list");
               }}
             >
               <div style={s.navIcon}>
-                <Icon d={t.icon} size={isMobile ? 20 : 24} />
+                <Icon d={tItem.icon} size={isMobile ? 20 : 24} />
               </div>
-              <div style={s.navLabel}>{getTabLabel(t.id)}</div>
+              <div style={s.navLabel}>{getTabLabel(tItem.id)}</div>
             </button>
           ))}
         </div>
