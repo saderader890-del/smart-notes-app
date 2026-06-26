@@ -399,7 +399,23 @@ function NoteEditor({ note, categories, onSave, onCancel, theme: t, s, allNotes 
         <label style={s.label}>Название</label>
         <input style={s.input} placeholder="Название заметки" value={title} onChange={(e)=>setTitle(e.target.value)} />
       </div>
-
+<div style={s.section}>
+  <label style={s.label}>Категория</label>
+  <select
+    style={{ ...s.input, cursor: "pointer" }}
+    value={categoryId || ""}
+    onChange={(e) =>
+      setCategoryId(e.target.value ? parseInt(e.target.value, 10) : null)
+    }
+  >
+    <option value="">Без категории</option>
+    {categories.map((cat) => (
+      <option key={cat.id} value={cat.id}>
+        {cat.name}
+      </option>
+    ))}
+  </select>
+</div>
       <div style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize:12, color: t.textMuted }}>Выделить цветом:</span>
         {colors.map(c=>(
