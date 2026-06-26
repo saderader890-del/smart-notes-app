@@ -418,7 +418,6 @@ const icons = {
   settings: "M12 2c-5.33 4.55-8 8.48-8 14.8 0 5.64 2.05 7.2 8 7.2s8-1.56 8-7.2c0-6.32-2.67-10.25-8-14.8z",
   menu: "M3 12h18M3 6h18M3 18h18",
 };
-
 /* -----------------------
    NoteEditor component (uses text + annotations)
    ----------------------- */
@@ -1057,7 +1056,7 @@ function NoteDetail({
               marginTop: 16,
               borderColor: t.accent,
               background: `${t.accent}11`,
-            }}
+        }}
           >
             <div
               style={{
@@ -1085,7 +1084,6 @@ function NoteDetail({
     </div>
   );
 }
-
 /* -----------------------
    Main App
    ----------------------- */
@@ -1114,6 +1112,10 @@ export default function SmartNotesApp() {
     typeof window !== "undefined" ? window.innerHeight : 768
   );
   const chatRef = useRef(null);
+
+  // Autoscroll helpers (moved to top-level to satisfy hooks rules)
+  const prevHeightRef = useRef(0);
+  const isUserAtBottomRef = useRef(true);
 
   const [saveStatus, setSaveStatus] = useState("idle");
   const [draftExists, setDraftExists] = useState(false);
@@ -1476,6 +1478,47 @@ export default function SmartNotesApp() {
     }
   };
 
+  // -----------------
+  // Chat autoscroll logic (top-level hooks)
+  // -----------------
+  // Attach scroll listener to chat element when tab changes (so we can detect manual scroll)
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const threshold = 48; // px from bottom to still consider "at bottom"
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+      isUserAtBottomRef.current = atBottom;
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    // initialize
+    onScroll();
+
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [tab]);
+
+  // Auto-scroll when data.chatHistory changes, but only if user was at bottom
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el) return;
+
+    const currentHeight = el.scrollHeight;
+    const isNewMessage = currentHeight > prevHeightRef.current;
+
+    if (isNewMessage && isUserAtBottomRef.current) {
+      el.scrollTo({
+        top: currentHeight,
+        behavior: "smooth",
+      });
+    }
+
+    prevHeightRef.current = currentHeight;
+  }, [data.chatHistory]);
+   
   const s = useMemo(() => {
     const fontSize = {
       xs: isMobile ? 10 : 12,
@@ -2070,7 +2113,6 @@ export default function SmartNotesApp() {
       </div>
     );
   };
-
   const renderAI = () => {
     const systemPrompt = `Ты умный ассистент приложения SmartNotes. У тебя есть доступ к заметкам и библиотеке пользователя.
 
@@ -2112,13 +2154,6 @@ ${libraryContext || "Библиотека пуста."}`;
       }
       setChatLoading(false);
     };
-
-    useEffect(() => {
-      // auto-scroll chat to bottom when messages change
-      if (chatRef.current) {
-        chatRef.current.scrollTop = chatRef.current.scrollHeight;
-      }
-    }, [data.chatHistory, chatLoading]);
 
     return (
       <div
@@ -2565,4 +2600,5 @@ ${libraryContext || "Библиотека пуста."}`;
       <SaveIndicator />
     </div>
   );
-}
+        }
+  
