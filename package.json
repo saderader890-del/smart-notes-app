@@ -1,35 +1,22 @@
 {
-  "name": "smart-notes-app",
+  "name": "smartnotes-backend",
   "version": "1.0.0",
-  "description": "Smart Notes App with AI-powered quiz generation and chat",
-  "private": true,
-  "dependencies": {
-    "mammoth": "^1.8.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
-  },
+  "description": "Бэкенд для SmartNotes: транскрипция аудио + ИИ с управлением вкладками",
+  "main": "src/server.js",
+  "type": "module",
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.4.5",
+    "openai": "^4.52.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "uuid": "^9.0.1",
+    "better-sqlite3": "^11.1.2"
   }
 }
