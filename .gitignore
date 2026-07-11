@@ -1,16 +1,13 @@
-# Dependencies
+.env
 /node_modules
 /.pnp
 .pnp.js
 
-# Testing
 /coverage
 
-# Production
 /build
 /dist
 
-# Misc
 .DS_Store
 .env
 .env.local
@@ -22,8 +19,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# IDE
 .vscode
 .idea
 *.swp
 *.swo
+
+smartnotes.db
+smartnotes.db-wal
+smartnotes.db-shm
