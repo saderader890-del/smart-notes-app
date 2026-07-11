@@ -34,7 +34,6 @@ const colorSchemes = {
       danger: "#9C3848",
       shadow: "42,36,29",
     },
-  },
   indigo: {
     label: "Сине-фиолетовая",
     swatch: "#6366F1",
@@ -66,7 +65,6 @@ const colorSchemes = {
       danger: "#DA3633",
       shadow: "20,20,40",
   },
-};
   forest: {
     label: "Лесная зелень",
     swatch: "#3E8E5B",
@@ -97,7 +95,6 @@ const colorSchemes = {
       warning: "#B8863A",
       danger: "#A6483D",
       shadow: "22,32,26",
-    },
   },
   ocean: {
     label: "Океан",
@@ -130,7 +127,6 @@ const colorSchemes = {
       danger: "#B5504A",
       shadow: "18,30,38",
     },
-  },
 };
             berry: {
     label: "Ягодная",
@@ -162,7 +158,6 @@ const colorSchemes = {
       warning: "#C4622D",
       danger: "#9C3848",
       shadow: "36,20,28",
-    },
   },
   slate: {
     label: "Графитовая",
@@ -194,7 +189,6 @@ const colorSchemes = {
       warning: "#B8863A",
       danger: "#9C3848",
       shadow: "22,24,28",
-    },
   },
 };
 
