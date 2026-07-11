@@ -7013,6 +7013,7 @@ const renderSport = () => {
     );
   }
 
+
   if (sportView === "detail") {
     const w = data.workouts.find((wk) => wk.id === activeWorkoutId);
     if (!w) {
@@ -7143,10 +7144,11 @@ const renderSport = () => {
                 </button>
               </div>
             </div>
-            )}
           </div>
-        );
-        }
+        )}
+      </div>
+    );
+  } 
           if (sportView === "stats") {
     const maxMonthCount = Math.max(1, ...overallStats.byMonth.map((m) => m.count));
     const maxMonthDistance = Math.max(0.1, ...overallStats.byMonth.map((m) => m.distance));
@@ -7160,7 +7162,7 @@ const renderSport = () => {
             <Icon d={icons.back} size={16} color={t.text} /> Дашборд
           </button>
         </div>
-         }
+      
         <div
           style={{
             display: "grid",
