@@ -1,7 +1,6 @@
 /* App.jsx — исправлена отрисовка превью, видимость иконки темы, нижняя панель */
 import { useState, useEffect, useRef, useMemo } from "react";
 import mammoth from "mammoth";
-
 const colorSchemes = {
   warm: {
     label: "Тёплая терракота",
