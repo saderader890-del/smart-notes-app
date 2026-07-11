@@ -7160,7 +7160,7 @@ const renderSport = () => {
             <Icon d={icons.back} size={16} color={t.text} /> Дашборд
           </button>
         </div>
-
+         }
         <div
           style={{
             display: "grid",
