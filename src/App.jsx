@@ -65,7 +65,6 @@ const colorSchemes = {
       warning: "#D29922",
       danger: "#DA3633",
       shadow: "20,20,40",
-    },
   },
 };
   forest: {
