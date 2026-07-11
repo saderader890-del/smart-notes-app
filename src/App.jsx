@@ -1,6 +1,12 @@
 /* App.jsx — исправлена отрисовка превью, видимость иконки темы, нижняя панель */
 import { useState, useEffect, useRef, useMemo } from "react";
 import mammoth from "mammoth";
+
+/* Both light and dark mode get a full structural palette per scheme
+   (background, surface, card, border, text) tuned to that scheme's hue —
+   e.g. indigo restores the original App.jsx dark theme, and its light
+   mode gets a cool-toned counterpart instead of the shared warm cream. */
+
 const colorSchemes = {
   warm: {
     label: "Тёплая терракота",
@@ -33,6 +39,7 @@ const colorSchemes = {
       danger: "#9C3848",
       shadow: "42,36,29",
     },
+  },
   indigo: {
     label: "Сине-фиолетовая",
     swatch: "#6366F1",
@@ -63,6 +70,7 @@ const colorSchemes = {
       warning: "#D29922",
       danger: "#DA3633",
       shadow: "20,20,40",
+    },
   },
   forest: {
     label: "Лесная зелень",
@@ -94,6 +102,7 @@ const colorSchemes = {
       warning: "#B8863A",
       danger: "#A6483D",
       shadow: "22,32,26",
+    },
   },
   ocean: {
     label: "Океан",
@@ -126,8 +135,8 @@ const colorSchemes = {
       danger: "#B5504A",
       shadow: "18,30,38",
     },
-};
-            berry: {
+  },
+  berry: {
     label: "Ягодная",
     swatch: "#B23A6B",
     dark: {
@@ -157,6 +166,7 @@ const colorSchemes = {
       warning: "#C4622D",
       danger: "#9C3848",
       shadow: "36,20,28",
+    },
   },
   slate: {
     label: "Графитовая",
@@ -188,6 +198,7 @@ const colorSchemes = {
       warning: "#B8863A",
       danger: "#9C3848",
       shadow: "22,24,28",
+    },
   },
 };
 
@@ -198,6 +209,7 @@ function buildThemes(schemeId) {
     light: scheme.light,
   };
 }
+
 
 const FONT_FAMILIES = {
   system: {
