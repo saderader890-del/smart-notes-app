@@ -858,76 +858,35 @@ function exportNoteAsFile(note, format) {
     downloadBlob(content, `${safeTitle}.txt`, "text/plain;charset=utf-8");
   }
   }
-        async function askAI(messages, systemPrompt) {
-  const userMessage = messages[messages.length - 1]?.content || "";
+        const API_BASE = "https://smart-notes-app-production-909a.up.railway.app";
 
-  try {
-    const body = {
-      model: "mistralai/mistral-7b-instruct:free",
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
-      max_tokens: 500,
-    };
+function getOrCreateUserId() {
+  let id = localStorage.getItem("smartnotes_user_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("smartnotes_user_id", id);
+  }
+  return id;
+}
 
-    const fetchOptions = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    };
+async function askAI(message) {
+  const userId = getOrCreateUserId();
 
-    if (
-      typeof AbortSignal !== "undefined" &&
-      typeof AbortSignal.timeout === "function"
-    ) {
-      fetchOptions.signal = AbortSignal.timeout(15000);
-    }
+  const response = await fetch(`${API_BASE}/api/chat/message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${userId}`,
+    },
+    body: JSON.stringify({ message }),
+  });
 
-    const apiKey =
-      (typeof process !== "undefined" &&
-        process.env &&
-        process.env.REACT_APP_OPENROUTER_KEY) ||
-      null;
-
-    if (apiKey) {
-      fetchOptions.headers = {
-        ...fetchOptions.headers,
-        Authorization: `Bearer ${apiKey}`,
-      };
-    }
-
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      fetchOptions
-    );
-
-    if (response && response.ok) {
-      const data = await response.json();
-
-      return (
-        data.choices?.[0]?.message?.content ||
-        data.choices?.[0]?.text ||
-        "Извините, не удалось получить ответ."
-      );
-    }
-  } catch (err) {
-    console.log("AI error:", err);
+  if (!response.ok) {
+    throw new Error("Ошибка при обращении к ИИ");
   }
 
-  const fallbackResponses = {
-    "создай": "✅ Заметка создана!",
-    "удали": "✅ Заметка удалена.",
-    "переместить": "✅ Заметка перемещена.",
-    "категория": "✅ Категория создана!",
-    "найти": "🔍 Поиск завершен.",
-    "анализ": "📊 Анализ завершен.",
-    "привет": "👋 Привет! Я ваш ИИ-ассистент.",
-    "помощь": "ℹ️ Я могу помочь с заметками и библиотекой.",
-  };
-
-  for (const [key, value] of Object.entries(fallbackResponses)) {
-    if (userMessage.toLowerCase().includes(key)) return value;
-  }
-
-  return `Спасибо за вопрос: "${userMessage}"\n\nЯ помогу вам организовать информацию.`;
+  const data = await response.json();
+  return { reply: data.reply, toolCalls: data.toolCalls };
 }
 
 /* Icon & icons */
@@ -5817,41 +5776,40 @@ ${notesContext || "Заметок пока нет."}
 ${libraryContext || "Библиотека пуста."}`;
 
   const sendChat = async () => {
-    const textMsg = chatInput.trim();
+      const textMsg = chatInput.trim();
 
-    if (!textMsg || chatLoading) return;
+      if (!textMsg || chatLoading) return;
 
-    setChatInput("");
+      setChatInput("");
 
-    const userMsg = { role: "user", content: textMsg };
-    const history = [...data.chatHistory, userMsg];
+      const userMsg = { role: "user", content: textMsg };
+      const history = [...data.chatHistory, userMsg];
 
-    persist({ ...data, chatHistory: history });
+      persist({ ...data, chatHistory: history });
 
-    setChatLoading(true);
+      setChatLoading(true);
 
-    try {
-      const reply = await askAI(
-        history.map((m) => ({ role: m.role, content: m.content })),
-        systemPrompt
-      );
+      try {
+        const { reply, toolCalls } = await askAI(textMsg);
 
-      persist({
-        ...data,
-        chatHistory: [...history, { role: "assistant", content: reply }],
-      });
-    } catch (_) {
-      persist({
-        ...data,
-        chatHistory: [
-          ...history,
-          { role: "assistant", content: "Ошибка соединения. Попробуйте снова." },
-        ],
-      });
-    }
+        const userId = getOrCreateUserId();
+        const freshState = await fetch(`${API_BASE}/api/state`, {
+          headers: { Authorization: `Bearer ${userId}` },
+        }).then((r) => r.json());
 
-    setChatLoading(false);
-  };
+        persist(freshState);
+      } catch (_) {
+        persist({
+          ...data,
+          chatHistory: [
+            ...history,
+            { role: "assistant", content: "Ошибка соединения. Попробуйте снова." },
+          ],
+        });
+      }
+
+      setChatLoading(false);
+    };
 
   return (
     <div
